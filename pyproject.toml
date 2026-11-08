@@ -1,0 +1,212 @@
+[project]
+name = "fastapi-szumplate"
+version = "0.1.0"
+description = "Production-ready FastAPI service with uv, Ruff, mypy strict and pytest"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+# A deployable service: the classifier makes PyPI refuse an accidental upload.
+classifiers = ["Private :: Do Not Upload"]
+requires-python = ">=3.15"
+dependencies = [
+    "fastapi>=0.162.2",
+    "pydantic>=2.14.3",
+    "pydantic-settings>=2.16.2",
+    "structlog>=26.1.0",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+fastapi-szumplate = "fastapi_szumplate.__main__:main"
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]  # 1.27 reads the PEP 639 `license` expression
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fastapi_szumplate"]
+
+[dependency-groups]
+api = [
+    "schemathesis>=4.33.1",
+]
+dev = [
+    "import-linter>=2.16",
+    "mypy>=2.4.1",
+    "ruff>=0.17.4",
+]
+test = [
+    "coverage>=7.17.2",
+    "factory-boy>=3.3.3",
+    "httpx2>=2.16.0",
+    "hypothesis>=6.170.15",
+    "pytest>=9.2.0",
+    "pytest-randomly>=5.0.0",
+    "pytest-timeout>=2.4.0",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py315"
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "I", "UP", "B", "S", "G", "LOG", "T20", "TRY", "PT", "D", "PTH", "FURB", "TD",
+    "RUF", "FAST", "ASYNC", "BLE", "C4", "SIM", "RET", "PIE", "PERF", "PGH", "RSE", "FLY", "ISC", "A",
+    "PLE", "PLW", "ARG", "DTZ",
+]
+# TRY003: a short message at the raise site is clearer than an exception class per message.
+# TRY004: Pydantic validators must raise ValueError, never TypeError.
+ignore = ["TRY003", "TRY004"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["fastapi_szumplate", "tests", "scripts"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D", "S101", "S105", "S106", "ARG"]  # ARG: fixtures requested for their effect
+"scripts/**" = ["T201", "D"]
+
+[tool.mypy]
+strict = true
+files = ["src", "tests", "scripts"]
+mypy_path = "src"
+plugins = ["pydantic.mypy"]
+warn_unreachable = true
+enable_error_code = [
+    "ignore-without-code",
+    "redundant-expr",
+    "truthy-bool",
+    "truthy-iterable",
+    "possibly-undefined",
+    "deprecated",
+    "mutable-override",
+    "unused-awaitable",
+    "exhaustive-match",
+]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.pytest.ini_options]
+minversion = "9.2"
+testpaths = ["tests"]
+addopts = "-ra"
+# strict_config, strict_markers, strict_parametrization_ids and strict_xfail.
+strict = true
+# A deprecation or resource warning is a failure, not noise in the summary.
+filterwarnings = ["error"]
+# pytest-randomly is not required: `-p no:randomly` turns it off to replay a run in file order.
+required_plugins = ["pytest-timeout>=2.4"]
+timeout = 60
+markers = [
+    "concurrency: tests that fire competing requests in parallel to prove an atomic guard",
+]
+
+[tool.uv]
+required-version = ">=0.13.7"
+default-groups = ["dev", "test"]
+
+[tool.coverage.run]
+branch = true
+source = ["fastapi_szumplate", "scripts"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 95
+
+[tool.importlinter]
+root_package = "fastapi_szumplate"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "The core never imports the example domain"
+type = "forbidden"
+source_modules = [
+    "fastapi_szumplate.config",
+    "fastapi_szumplate.health",
+    "fastapi_szumplate.logging_config",
+    "fastapi_szumplate.middleware",
+    "fastapi_szumplate.openapi",
+    "fastapi_szumplate.pagination",
+    "fastapi_szumplate.problems",
+    "fastapi_szumplate.query",
+    "fastapi_szumplate.types",
+]
+forbidden_modules = ["fastapi_szumplate.library"]
+
+[[tool.importlinter.contracts]]
+name = "The core is layered: entry point, factory, features, foundations"
+type = "layers"
+layers = [
+    "fastapi_szumplate.__main__",
+    "fastapi_szumplate.main",
+    "fastapi_szumplate.health | fastapi_szumplate.middleware | fastapi_szumplate.openapi | fastapi_szumplate.logging_config | fastapi_szumplate.pagination",
+    "fastapi_szumplate.problems | fastapi_szumplate.config | fastapi_szumplate.query | fastapi_szumplate.types",
+]
+
+[[tool.importlinter.contracts]]
+name = "Only the entry point imports the web server"
+type = "forbidden"
+source_modules = [
+    "fastapi_szumplate.main",
+    "fastapi_szumplate.config",
+    "fastapi_szumplate.health",
+    "fastapi_szumplate.logging_config",
+    "fastapi_szumplate.middleware",
+    "fastapi_szumplate.openapi",
+    "fastapi_szumplate.pagination",
+    "fastapi_szumplate.problems",
+    "fastapi_szumplate.query",
+    "fastapi_szumplate.types",
+]
+forbidden_modules = ["uvicorn"]
+
+[[tool.importlinter.contracts]]
+name = "Loans domain imports the standard library only"
+type = "forbidden"
+source_modules = ["fastapi_szumplate.library.loans.domain"]
+forbidden_modules = [
+    "fastapi",
+    "pydantic",
+    "pydantic_settings",
+    "starlette",
+    "structlog",
+    "fastapi_szumplate.problems",
+    "fastapi_szumplate.config",
+    "fastapi_szumplate.pagination",
+]
+
+[[tool.importlinter.contracts]]
+name = "Loans layers point toward the domain"
+type = "layers"
+layers = [
+    "fastapi_szumplate.library.loans.entrypoints",
+    "fastapi_szumplate.library.loans.service_layer | fastapi_szumplate.library.loans.adapters",
+    "fastapi_szumplate.library.loans.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "Books layers point toward the models"
+type = "layers"
+layers = [
+    "fastapi_szumplate.library.books.router",
+    "fastapi_szumplate.library.books.service",
+    "fastapi_szumplate.library.books.repository",
+    "fastapi_szumplate.library.books.models",
+]
+
+[[tool.importlinter.contracts]]
+name = "Books and loans meet only in the catalog adapter"
+type = "independence"
+modules = ["fastapi_szumplate.library.books", "fastapi_szumplate.library.loans"]
+ignore_imports = [
+    "fastapi_szumplate.library.loans.adapters.books_catalog -> fastapi_szumplate.library.books.repository",
+]

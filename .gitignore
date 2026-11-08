@@ -1,0 +1,17 @@
+__pycache__/
+.venv/
+.env
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+.coverage
+.idea/
+.coverage.*
+htmlcov/
+.env.*
+!.env.example
+*.pyc
+.DS_Store
+.openapi-base.json
+.schemathesis/

@@ -1,0 +1,43 @@
+# Lints openapi.json (generated from the app). CI fails on warnings: --fail-severity=warn.
+extends: ["spectral:oas"]
+
+rules:
+  # Team rules on top of spectral:oas.
+  operation-id-snake-case:
+    description: operationId is snake_case, verb first (list_orders, create_order).
+    severity: error
+    given: "$.paths[*][*].operationId"
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[a-z]+(_[a-z0-9]+)*$"
+
+  parameter-description-required:
+    description: Every parameter says what it is.
+    severity: warn
+    given: "$.paths[*][*].parameters[*]"
+    then:
+      field: description
+      function: truthy
+
+  property-description-required:
+    description: Every property of a schema says what it is.
+    severity: warn
+    given: "$.components.schemas[*].properties[*]"
+    then:
+      field: description
+      function: truthy
+
+  error-responses-use-problem-json:
+    description: Error responses are application/problem+json only.
+    severity: error
+    given: "$.paths[*][*].responses[?(@property >= '400')].content"
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          type: object
+          required: [application/problem+json]
+          properties:
+            application/problem+json: {}
+          additionalProperties: false

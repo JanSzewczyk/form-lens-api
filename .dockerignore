@@ -1,0 +1,10 @@
+# An allowlist: the build context is only what the image needs, so nothing else can leak in or
+# invalidate the cached layers.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!src
+**/__pycache__
+**/*.pyc

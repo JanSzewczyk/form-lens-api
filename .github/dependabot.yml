@@ -1,0 +1,50 @@
+version: 2
+# A cooldown lets a broken or compromised release be pulled before it reaches a pull request.
+# Commit messages follow Conventional Commits: build(deps) for packages and images, ci(deps) for
+# workflow actions. Major versions get a pull request of their own; the rest come grouped.
+#
+# Not covered: the Spectral, oasdiff and pip-audit pins in the Makefile. Bump them by hand.
+updates:
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: build
+      include: scope
+    groups:
+      python-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      actions-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  # Bumps the uv image in the Dockerfile only; tests/test_tooling.py fails until UV_VERSION in
+  # ci.yml matches, so update both in the same pull request.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: build
+      include: scope
+    groups:
+      images-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]

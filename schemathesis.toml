@@ -1,0 +1,3 @@
+# Read by `schemathesis run` from the working directory.
+[phases.stateful]
+max-steps = 50

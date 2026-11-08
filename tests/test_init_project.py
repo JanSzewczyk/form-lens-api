@@ -207,6 +207,22 @@ def test_markers_keep_the_lines_of_the_chosen_audience(keep: set[str], expected:
     assert init_project.apply_markers(MARKED, frozenset(keep)) == expected
 
 
+def test_an_uncomment_marker_enables_a_commented_line_in_a_project() -> None:
+    text = "      # - name: Release  # uncomment:project\n      #   run: go  # uncomment:project\n"
+
+    assert init_project.apply_markers(text, frozenset({"project"})) == "      - name: Release\n        run: go\n"
+    assert init_project.apply_markers(text, frozenset()) == "      # - name: Release\n      #   run: go\n"
+
+
+def test_the_release_step_is_enabled_in_a_project_copy(project: Path) -> None:
+    assert init_project.main(["orders-api", "--root", str(project)]) == 0
+
+    release = (project / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert "      - name: Create release 🚀\n        run: uv run semantic-release version\n        env:\n" in release
+    assert "uncomment" not in release
+    assert "template" not in release
+
+
 @pytest.mark.parametrize("name", ["Orders", "orders_api", "orders-", "1orders", ""])
 def test_an_invalid_name_is_refused(project: Path, name: str) -> None:
     assert init_project.main([name, "--root", str(project)]) == 2

@@ -19,6 +19,10 @@ their own (`<!-- ... -->` in Markdown, `# ...` elsewhere):
     <!-- begin:example -->       these lines only while the example stays
     ...
     <!-- end:example -->
+    # - name: Release  # uncomment:project   commented out in the template, enabled in a project
+
+A line with `uncomment:<audience>` loses its leading `# ` (and the marker) when that audience is
+kept, and stays a comment otherwise. Write the line so that removing `# ` leaves valid code.
 
 The audiences are `template` (always removed here), `project` (always kept), `example` (kept
 unless `--without-example`) and `bare` (kept only with `--without-example`). The marker comments
@@ -69,7 +73,7 @@ EXAMPLE_WORDS = re.compile(
     re.IGNORECASE,
 )
 THIS_SCRIPT = Path(__file__).resolve()
-MARKER = re.compile(r"(?:<!--\s*|#\s*)(?P<kind>only|begin|end):(?P<audience>[a-z]+)(?:\s*-->)?\s*$")
+MARKER = re.compile(r"(?:<!--\s*|#\s*)(?P<kind>only|begin|end|uncomment):(?P<audience>[a-z]+)(?:\s*-->)?\s*$")
 
 
 def text_files(root: Path) -> list[Path]:
@@ -153,6 +157,12 @@ def apply_markers(text: str, keep: frozenset[str]) -> str:
             visible.append(marker["audience"] in keep)
         elif marker["kind"] == "end":
             visible.pop()
+        elif marker["kind"] == "uncomment":
+            if all(visible):
+                code = line[: marker.start()].rstrip()
+                if marker["audience"] in keep:
+                    code = re.sub(r"^(\s*)# ?", r"\1", code)
+                kept.append(code + "\n")
         elif all(visible) and marker["audience"] in keep:
             kept.append(line[: marker.start()].rstrip() + "\n")
     return "".join(kept)

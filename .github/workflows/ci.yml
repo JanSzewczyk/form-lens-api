@@ -1,4 +1,4 @@
-name: ci
+name: CI ✅
 
 # Pushes to main and pull requests; a branch without a pull request runs CI from the Actions tab
 # (workflow_dispatch). Running on every push too would test each pull request commit twice.
@@ -27,17 +27,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7.0.1
+      - name: Checkout code 📚
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@v10.3.3
+      - name: Set up uv 🐍
+        uses: astral-sh/setup-uv@v10.3.3
         with:
           version: ${{ env.UV_VERSION }}
-      - run: uv sync --locked
-      - run: make check
-      - name: Coverage summary
+      - name: Install dependencies ⚙️
+        run: uv sync --locked
+      - name: Run checks ✅
+        run: make check
+      - name: Coverage summary 📊
         run: uv run coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
-      - run: make audit
+      - name: Audit dependencies 🔒
+        run: make audit
 
   # Contract tooling: Spectral on the spec, oasdiff against main, Schemathesis against a live server.
   api:
@@ -45,26 +50,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7.0.1
+      - name: Checkout code 📚
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0 # api-breaking reads origin/main:openapi.json
           persist-credentials: false
-      - uses: astral-sh/setup-uv@v10.3.3
+      - name: Set up uv 🐍
+        uses: astral-sh/setup-uv@v10.3.3
         with:
           version: ${{ env.UV_VERSION }}
-      - run: uv sync --locked --group api
-      - run: make api-check
+      - name: Install dependencies ⚙️
+        run: uv sync --locked --group api
+      - name: Run API checks 📜
+        run: make api-check
 
   docker:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7.0.1
+      - name: Checkout code 📚
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: docker/setup-buildx-action@v4.4.1
-      - uses: docker/build-push-action@v7.4.0
+      - name: Set up Buildx 🐳
+        uses: docker/setup-buildx-action@v4.4.1
+      - name: Build image 🏗️
+        uses: docker/build-push-action@v7.4.0
         with:
           context: . # the checkout, so .dockerignore applies as in a local build
           load: true
@@ -73,15 +85,19 @@ jobs:
           cache-to: type=gha,mode=max
       # compose.yaml runs it read-only, without capabilities and with no-new-privileges; `--wait`
       # waits for the image HEALTHCHECK.
-      - run: docker compose up --detach --no-build --wait --wait-timeout 90
-      - run: curl --silent --show-error --fail --retry 3 --retry-all-errors http://127.0.0.1:8000/health
-      - if: failure()
+      - name: Start with Compose 🐳
+        run: docker compose up --detach --no-build --wait --wait-timeout 90
+      - name: Call /health 🩺
+        run: curl --silent --show-error --fail --retry 3 --retry-all-errors http://127.0.0.1:8000/health
+      - name: Show Compose logs 📋
+        if: failure()
         run: docker compose logs
 
   # begin:template
   # Proves that a project made from the template passes its own `make check`, with and without
   # the example. The same script runs locally as `make smoke-template`.
   template-smoke:
+    name: Template smoke 🧪
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -90,28 +106,36 @@ jobs:
       matrix:
         variant: ["", "--rename-only"]
     steps:
-      - uses: actions/checkout@v7.0.1
+      - name: Checkout code 📚
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@v10.3.3
+      - name: Set up uv 🐍
+        uses: astral-sh/setup-uv@v10.3.3
         with:
           version: ${{ env.UV_VERSION }}
-      - run: scripts/smoke_template.sh ${{ matrix.variant }}
+      - name: Run smoke test 🧪
+        run: scripts/smoke_template.sh ${{ matrix.variant }}
 
   # end:template
   # Informational: the free-threaded build exposes races the GIL hides. Never blocks a merge.
   free-threaded:
+    name: Free-threaded 🧵
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v7.0.1
+      - name: Checkout code 📚
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@v10.3.3
+      - name: Set up uv 🐍
+        uses: astral-sh/setup-uv@v10.3.3
         with:
           version: ${{ env.UV_VERSION }}
           python-version: "3.15t"
-      - run: uv sync --locked
-      - run: uv run pytest
+      - name: Install dependencies ⚙️
+        run: uv sync --locked
+      - name: Run tests 🧪
+        run: uv run pytest

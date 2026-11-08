@@ -12,23 +12,28 @@ from pathlib import Path
 
 import pytest
 
-from formlens.config import Settings
-from tests.model_pins import MODEL_PINS
+from formlens.config import ModelSettings
+from formlens.modelspec import MODEL_SPECS, VlmBackend
+
+
+def check_the_pinned_model_files(settings: ModelSettings) -> None:
+    """The body of the slow test, on the settings the caller chose, so `make check` can run it without `.env`."""
+    spec = MODEL_SPECS[settings.vlm_backend]
+    folder = settings.models_path / spec.folder
+    hint = f"{spec.repo} is not in {folder}; run `make download-models`"
+
+    assert folder.is_dir(), hint
+    assert (folder / ".revision").is_file(), hint
+    assert (folder / ".revision").read_text(encoding="utf-8").strip() == spec.revision, hint
+    assert [name for name in spec.files if not (folder / name).is_file()] == [], hint
+    assert (folder / "model.safetensors").stat().st_size > 100_000_000, "model.safetensors looks truncated"
 
 
 @pytest.mark.slow
 @pytest.mark.timeout(600)
 def test_the_pinned_model_files_are_present_under_the_models_path() -> None:
-    settings = Settings(_env_file=None)  # MODELS_PATH and VLM_BACKEND from the environment, not .env
-    pin = MODEL_PINS[settings.vlm_backend]
-    folder = settings.models_path / pin.folder
-    hint = f"{pin.repo} is not in {folder}; run `make download-models`"
-
-    assert folder.is_dir(), hint
-    assert (folder / ".revision").is_file(), hint
-    assert (folder / ".revision").read_text(encoding="utf-8").strip() == pin.revision, hint
-    assert [name for name in pin.files if not (folder / name).is_file()] == [], hint
-    assert (folder / "model.safetensors").stat().st_size > 100_000_000, "model.safetensors looks truncated"
+    """Read like the service and `make download-models` read them: the environment, then `.env`, then the defaults."""
+    check_the_pinned_model_files(ModelSettings())
 
 
 # --- Stage 0 contract tests: the `slow` test fails clearly, and `make check` never reaches it -----
@@ -56,16 +61,16 @@ def run_pytest(
     )
 
 
-def lay_out_the_model(models_path: Path, backend: str = "mlx") -> Path:
+def lay_out_the_model(models_path: Path, backend: VlmBackend = "mlx") -> Path:
     """Create the files the slow test looks for; `model.safetensors` is sparse, so it costs no disk."""
-    pin = MODEL_PINS[backend]
-    folder = models_path / pin.folder
+    spec = MODEL_SPECS[backend]
+    folder = models_path / spec.folder
     folder.mkdir(parents=True)
-    for name in pin.files:
+    for name in spec.files:
         (folder / name).write_text("{}", encoding="utf-8")
     with (folder / "model.safetensors").open("wb") as weights:
         weights.truncate(100_000_001)
-    (folder / ".revision").write_text(pin.revision + "\n", encoding="utf-8")
+    (folder / ".revision").write_text(spec.revision + "\n", encoding="utf-8")
     return folder
 
 
@@ -105,7 +110,7 @@ def test_the_slow_test_passes_when_the_pinned_files_are_in_place(
     monkeypatch.setenv("MODELS_PATH", str(tmp_path / "models"))
     monkeypatch.delenv("VLM_BACKEND", raising=False)
 
-    test_the_pinned_model_files_are_present_under_the_models_path()
+    check_the_pinned_model_files(ModelSettings(_env_file=None))
 
 
 def test_the_slow_test_follows_the_backend_setting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -114,7 +119,7 @@ def test_the_slow_test_follows_the_backend_setting(tmp_path: Path, monkeypatch: 
     monkeypatch.setenv("VLM_BACKEND", "transformers")
 
     with pytest.raises(AssertionError, match=r"granite-docling-258M is not in .*make download-models"):
-        test_the_pinned_model_files_are_present_under_the_models_path()
+        check_the_pinned_model_files(ModelSettings(_env_file=None))
 
 
 def set_a_wrong_revision(folder: Path) -> None:
@@ -150,4 +155,4 @@ def test_the_slow_test_fails_for_each_way_a_download_can_be_wrong(
     monkeypatch.delenv("VLM_BACKEND", raising=False)
 
     with pytest.raises(AssertionError, match=message):
-        test_the_pinned_model_files_are_present_under_the_models_path()
+        check_the_pinned_model_files(ModelSettings(_env_file=None))

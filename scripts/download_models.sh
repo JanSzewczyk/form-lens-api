@@ -5,7 +5,8 @@
 #        VLM_BACKEND=transformers scripts/download_models.sh
 #
 # The model goes to $MODELS_PATH/<owner>--<repo>, the folder name Docling looks for when it is given
-# the models folder as `artifacts_path`. A relative MODELS_PATH is read from the repository root.
+# the models folder as `artifacts_path`. A relative MODELS_PATH is read from the working directory,
+# as the service reads it; `make` runs from the repository root, so there it means the same folder.
 # The revisions are pinned: bump them here, in docs/licenses.md and in tests/model_pins.py together.
 # Running it again with the pinned revision already in place downloads nothing.
 #
@@ -14,9 +15,8 @@
 # Bash 3.2 compatible (macOS /bin/bash).
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
-
-VLM_BACKEND="${VLM_BACKEND:-mlx}"
+# Only an unset VLM_BACKEND means mlx. An empty one is refused, as Settings refuses it.
+VLM_BACKEND="${VLM_BACKEND-mlx}"
 MODELS_PATH="${MODELS_PATH:-models}"
 HF_CLI="${HF_CLI:-uvx --from huggingface_hub==2.4.0 hf}"
 

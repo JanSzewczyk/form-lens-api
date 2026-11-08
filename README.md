@@ -156,8 +156,8 @@ This fetches the model pinned for `VLM_BACKEND` (about 0.6 GB for `mlx`) into `M
 (`models/` by default, git-ignored) as `models/ibm-granite--granite-docling-258M-mlx/`. It needs
 network access and uv, and does nothing when the pinned revision is already there. Pass the backend
 or folder on the command line (`make download-models VLM_BACKEND=transformers`); the script does not
-read `.env`. A relative `MODELS_PATH` is read from the repository root. `make test-models` then
-checks that the files are in place. Licences: [docs/licenses.md](docs/licenses.md).
+read `.env`. A relative `MODELS_PATH` is read from the working directory, as the service reads it
+(`make` runs from the repository root). `make test-models` then checks that the files are in place. Licences: [docs/licenses.md](docs/licenses.md).
 
 #### 5. Start the Service
 

@@ -98,10 +98,16 @@ without a model. The model is loaded from `MODELS_PATH` only, never fetched at r
   `VlmPipeline` with the MLX model in 8 s with `HF_HUB_OFFLINE=1`. `uv add 'docling[vlm]'` also
   resolved and locked in a throwaway copy of the project (189 packages) and `uv sync --locked`
   passed there. The 3.14 fallback was not needed.
-- **Docling is not a dependency yet.** Stage 0 has no code that imports it. Whether it becomes a
-  runtime dependency or a dependency group is decided in Stage 1, when the adapter exists.
-- **The model is downloaded by a script, not by Docling.** `make download-models` pins a revision
-  and writes `MODELS_PATH/<owner>--<repo>`, the folder name Docling looks for under its
+- **Docling is a runtime dependency.** `docling[vlm]` and `python-multipart` are in
+  `[project].dependencies` and locked; `import formlens.main` imports neither Docling nor torch
+  (the adapter, added later, loads Docling lazily).
+- **The model pins and the two model settings have one source each.** `src/formlens/modelspec.py`
+  holds the repository, revision and file list per backend. `ModelSettings` in `config.py` holds
+  `MODELS_PATH` and `VLM_BACKEND`; `Settings` inherits it, and `scripts/resolve_model.py` reads it
+  for `make download-models`. A `.env` therefore moves the download and the service together.
+  `tests/test_docs.py` keeps `docs/licenses.md` in step with the pins.
+- **The model is downloaded by a script, not by Docling.** `make download-models` downloads the
+  revision pinned in `modelspec.py` and writes `MODELS_PATH/<owner>--<repo>`, the folder name Docling looks for under its
   `artifacts_path` (`resolve_model_artifacts_path` in `docling/models/inference_engines/vlm/_utils.py`),
   so Stage 1 can pass `settings.models_path` unchanged.
 - **Tests that need the model are `slow`.** `make check` deselects them; `make test-models` runs
@@ -114,18 +120,6 @@ without a model. The model is loaded from `MODELS_PATH` only, never fetched at r
 
 Nothing here is implemented. Do each item when the module that needs it exists.
 
-- **Known gap: two sources of defaults.** `scripts/download_models.sh` repeats in bash the defaults
-  and the validation that `Settings` holds (`VLM_BACKEND`, `MODELS_PATH`), and it never reads
-  `.env`. A `.env` with `VLM_BACKEND=transformers` or `MODELS_PATH=/elsewhere` moves the service
-  but not `make download-models`, and `make test-models` builds `Settings(_env_file=None)`, so it
-  ignores `.env` too. Today only a test keeps the script and `Settings` in agreement
-  (`tests/test_download_models.py`). Give both one source, for example by having the script ask
-  `Settings` for the values, and drop the copy.
-
-- Pin the `docling`, `transformers`, `huggingface_hub` and `PIL` loggers to `WARNING` in
-  `configure_logging`, so a dependency cannot flood the log or print a document's text at `DEBUG`.
-- Extend `SENSITIVE_PARTS` in the redaction processor with the field names that will carry document
-  content or file names, and keep uploaded text out of log events altogether.
 - Check that `VlmPipeline` fetches no other model or file at run time (run a conversion with
   `HF_HUB_OFFLINE=1` as the Stage 0 launch test did, and with the network cut).
 - Add the problem types the upload route needs (413 too large, 415 unsupported media type, 503

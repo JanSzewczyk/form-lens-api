@@ -20,6 +20,12 @@ All notable changes to this project are recorded here. The format follows
 
 ### Changed
 
+- `make download-models` and `make test-models` now read `MODELS_PATH` and `VLM_BACKEND` as the
+  service does: the environment first, then `.env`, then the defaults. Before, they read the
+  environment only, so a `.env` moved the service but not the download. The pinned repositories
+  and revisions moved from the script and `tests/model_pins.py` to `src/formlens/modelspec.py`,
+  and the script needs the project environment (`make install`) to resolve them. An unrelated bad
+  value in `.env` does not block a download.
 - Log redaction also masks keys that could hold a document or its name (`filename`, `file_name`,
   `content`, `markdown`, `plain_text`, `extracted_text`). `content` is a substring match, so
   `content-type` and `content_length` are masked too.

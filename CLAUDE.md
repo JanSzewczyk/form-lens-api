@@ -11,8 +11,10 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
   Commit it with any change that alters the API.
 - `make api-check` runs Spectral, oasdiff and Schemathesis (needs Node, Docker or oasdiff).
 - `make download-models` downloads the pinned model for `VLM_BACKEND` into `MODELS_PATH` (network,
-  uv, about 0.6 GB). The script reads the process environment and `make` variables, never `.env`:
-  `make download-models VLM_BACKEND=transformers MODELS_PATH=/data/models`.
+  uv, about 0.6 GB). The script asks `scripts/resolve_model.py`, which reads the two settings
+  through `ModelSettings` like the service does: environment and `make` variables, then `.env` in
+  the working directory, then the defaults. It runs `uv run --no-sync`, so `make install` comes
+  first: `make download-models VLM_BACKEND=transformers MODELS_PATH=/data/models`.
 - `make test-models` runs the tests marked `slow` and fails, not skips, when the pinned model files
   are missing. The default `addopts` is `-m "not slow"`, so `make check` and `uv run pytest`
   deselect them.
@@ -23,7 +25,8 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
 
 ## Layout
 
-- Service core: `config.py`, `logging_config.py`, `middleware.py`, `problems.py`, `openapi.py`,
+- Service core: `config.py`, `modelspec.py` (the pinned model repositories, revisions and files),
+  `logging_config.py`, `middleware.py`, `problems.py`, `openapi.py`,
   `types.py`, `pagination.py`, `query.py`, `health/`.
 - Add structure to a module only when it hurts (see `docs/explanation/architecture.md`).
   New modules start like `docs/how-to/add-a-module.md` says.
@@ -45,7 +48,7 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
   There is no factories module yet: set every value the test asserts on inline.
 - The autouse fixture `_isolate_from_exported_settings` (`tests/conftest.py`) deletes every setting
   from the environment for each test, so an exported `DOCS_ENABLED` cannot leak in. Tests marked
-  `slow` are exempt: they read `MODELS_PATH` and `VLM_BACKEND` from the environment.
+  `slow` are exempt: they read `MODELS_PATH` and `VLM_BACKEND` from the environment and `.env`.
 - Tests of the core use `/health` and the probe routes of `tests/probes.py` (fixture
   `probe_app`).
 - Logging: structlog, constant event names, snake_case fields, no f-strings, no `print`. Log a

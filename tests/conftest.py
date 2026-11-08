@@ -24,7 +24,7 @@ def _isolate_from_exported_settings(request: pytest.FixtureRequest, monkeypatch:
     """Remove every setting from the environment, so an exported `DOCS_ENABLED` cannot change a test.
 
     `Settings(_env_file=None)` skips the file but not the shell. The `slow` tests are spared: they read
-    `MODELS_PATH` and `VLM_BACKEND` from the environment (`make test-models MODELS_PATH=/data/models`).
+    `MODELS_PATH` and `VLM_BACKEND` from the environment and `.env` (`make test-models MODELS_PATH=/data/models`).
     """
     if request.node.get_closest_marker("slow") is not None:
         return

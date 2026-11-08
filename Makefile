@@ -81,7 +81,8 @@ audit:
 	set -o pipefail; uv export --locked --no-emit-project --all-groups --quiet \
 		| $(PIP_AUDIT) --disable-pip -r /dev/stdin
 
-# Downloads the pinned model for VLM_BACKEND (default mlx) into MODELS_PATH (default models/):
+# Downloads the pinned model for VLM_BACKEND (default mlx) into MODELS_PATH (default models/). Both
+# are read like the service reads them: the environment, then .env, then the defaults.
 # make download-models VLM_BACKEND=transformers
 download-models:
 	scripts/download_models.sh

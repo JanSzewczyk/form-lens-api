@@ -160,20 +160,22 @@ repository root). `make test-models` then checks that the files are in place. An
 `MODELS_PATH` or `VLM_BACKEND` is refused, by the script as by the service. Licences:
 [docs/licenses.md](docs/licenses.md).
 
-**The script reads only the process environment, never `.env`.** `make download-models` and
-`make test-models` see the variables you export and the ones you pass to `make`, not the ones in
-`.env`: a `.env` with `MODELS_PATH=/elsewhere` or `VLM_BACKEND=transformers` moves the service
-(`make run`) but not the download or the check. To point them elsewhere, export the variables or
-pass them on the command line, with the same values for all three commands:
+**The download, the check and the service read the same two settings the same way.**
+`make download-models` asks `scripts/resolve_model.py`, which reads `MODELS_PATH` and `VLM_BACKEND`
+through the same settings class as the service: the environment (and the variables you pass to
+`make`) first, then a `.env` in the working directory, then the defaults. A `.env` with
+`MODELS_PATH=/elsewhere` or `VLM_BACKEND=transformers` therefore moves the download, `make test-models`
+and `make run` together, and an exported variable beats the file for all three. An unrelated bad
+value in `.env` (`PORT=abc`) stops the service but not the download. The script runs the resolver
+with `uv run --no-sync`, so run `make install` first. You can still pass the variables on the
+command line:
 
 ```bash
 make download-models VLM_BACKEND=transformers MODELS_PATH=/data/models
 make test-models VLM_BACKEND=transformers MODELS_PATH=/data/models
 ```
 
-This is a known gap: the script repeats the defaults and the validation of `Settings` in bash.
-One source for both is a Stage 1 follow-up (see
-[architecture.md](docs/explanation/architecture.md#carry-forward-notes-for-stage-1)).
+The repositories and revisions are pinned in `src/formlens/modelspec.py`, the one place that names them.
 
 `HF_CLI` replaces the downloader (the tests use a fake one). It is split on spaces into a command
 and its arguments, so a path that contains a space does not work; point it at a wrapper script
@@ -364,7 +366,7 @@ only proves that nothing at start-up needs the network; repeat it with a real co
 
 ## 🔧 Configuration
 
-The service reads all settings from the environment or `.env` (see `.env.example`); the download script reads the environment only (see [Download the Model](#4-download-the-model)):
+The service reads all settings from the environment or `.env` (see `.env.example`). `make download-models` and `make test-models` read `MODELS_PATH` and `VLM_BACKEND` the same way (see [Download the Model](#4-download-the-model)):
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -499,7 +501,7 @@ models/              downloaded models (git-ignored)
 - **`make openapi-check` fails** — the API changed; run `make openapi` and commit `openapi.json`
 - **`make schemathesis` says the port is in use** — set `SCHEMATHESIS_PORT` to a free port
 - **`make api-breaking` skips the check** — `origin/main` has no `openapi.json` yet
-- **`make test-models` fails** — the pinned model is not in `MODELS_PATH`; run `make download-models` with the same `VLM_BACKEND` and `MODELS_PATH`, exported or passed to `make` (neither command reads `.env`)
+- **`make test-models` fails** — the pinned model is not in `MODELS_PATH`; run `make download-models` with the same `VLM_BACKEND` and `MODELS_PATH` (both commands read the environment and `.env` as the service does)
 - **`make download-models` says uvx is missing** — install [uv](https://docs.astral.sh/uv/), or set `HF_CLI` to another Hugging Face downloader (split on spaces; no space inside its path)
 - **Compose rejects `env_file`** — `required: false` needs Docker Compose 2.24 or newer
 - **The container ignores `ENVIRONMENT`, `HOST` or `PORT` from `.env`** — `make docker-run` and `compose.yaml` force them on purpose

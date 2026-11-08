@@ -19,7 +19,7 @@ reading is a step for a person: see [Open checks](#open-checks).
 
 Both models are IBM's Granite-Docling-258M, the same model in two formats. The service downloads one
 of them, chosen by `VLM_BACKEND`, with `make download-models`. The revisions are pinned in
-`scripts/download_models.sh`; `tests/test_docs.py` fails when this table and the script disagree.
+`src/formlens/modelspec.py`; `tests/test_docs.py` fails when this table and that file disagree.
 
 | `VLM_BACKEND` | Repository | Pinned revision | Licence | Status |
 | --- | --- | --- | --- | --- |
@@ -63,8 +63,9 @@ project's `requires-python`. `docling` itself is a thin package: the code lives 
 - `make audit` does not see them, because it audits the locked groups only;
 - their licences are not recorded here.
 
-Dependabot does not bump the pin either (it sits in `scripts/download_models.sh`). Bring the
-downloader under the lock, or accept this gap, in Stage 1.
+Dependabot does not bump the pin either (it sits in `scripts/download_models.sh`). The gap is
+open: the downloader is not under the lock yet, and Stage 1 does not close it. Decide whether to
+bring it under the lock or to accept the gap (see [Open checks](#open-checks)).
 
 ## What was run
 

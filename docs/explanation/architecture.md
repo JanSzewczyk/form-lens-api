@@ -115,7 +115,7 @@ without a model. The model is loaded from `MODELS_PATH` only, never fetched at r
 Nothing here is implemented. Do each item when the module that needs it exists.
 
 - Pin the `docling`, `transformers`, `huggingface_hub` and `PIL` loggers to `WARNING` in
-  `configure_logging`, so a library cannot flood the log or print a document's text at `DEBUG`.
+  `configure_logging`, so a dependency cannot flood the log or print a document's text at `DEBUG`.
 - Extend `SENSITIVE_PARTS` in the redaction processor with the field names that will carry document
   content or file names, and keep uploaded text out of log events altogether.
 - Check that `VlmPipeline` fetches no other model or file at run time (run a conversion with

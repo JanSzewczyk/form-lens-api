@@ -59,7 +59,7 @@ Nobody has done these yet:
 
 - Read both model cards and the Apache-2.0 text for the pinned revisions, and confirm no use
   restriction applies to this service.
-- Read the licence of every library marked **Unverified**, and of the transitive dependencies
+- Read the licence of every package marked **Unverified**, and of the transitive dependencies
   that ship weights or data.
 - Confirm that proprietary distribution of the service is compatible with all of the above.
 - Repeat the check, and update the date at the top, whenever a revision or a package version

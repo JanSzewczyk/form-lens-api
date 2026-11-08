@@ -55,3 +55,23 @@ def test_licenses_and_download_script_state_the_pinned_model(backend: str) -> No
     assert f'REVISION="{pin.revision}"' in script
     assert f"| `{backend}` | [{pin.repo}]" in licenses
     assert f"`{pin.revision}`" in licenses
+
+
+def test_readme_names_every_make_target_as_a_whole_word() -> None:
+    """`make test` is a prefix of `make test-models`, so the substring test above cannot tell them apart."""
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    targets = re.findall(r"^([a-z][a-z-]*):", makefile, re.MULTILINE)
+
+    assert "test-models" in targets
+    missing = [t for t in targets if not re.search(rf"\bmake {re.escape(t)}(?![\w-])", readme)]
+    assert missing == []
+
+
+def test_every_make_target_is_declared_phony() -> None:
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    joined = makefile.replace("\\\n", " ")
+    declared = {t for line in re.findall(r"^\.PHONY:(.*)$", joined, re.MULTILINE) for t in line.split()}
+    rules = set(re.findall(r"^([a-z][a-z-]*):", makefile, re.MULTILINE))
+
+    assert rules == declared

@@ -1,5 +1,5 @@
 .PHONY: install format lint typecheck imports test check run openapi openapi-check api-lint \
-	api-breaking schemathesis api-check audit docker-build docker-run clean
+	api-breaking schemathesis api-check audit download-models test-models docker-build docker-run clean
 
 # bash for `set -o pipefail` in recipes (macOS make 3.81 has no .SHELLFLAGS).
 SHELL := bash
@@ -27,6 +27,11 @@ imports:
 
 test:
 	uv run pytest
+
+# The tests marked `slow` need the downloaded models (make download-models); they fail, not skip,
+# when the files are missing. `make check` deselects them.
+test-models:
+	uv run pytest -m slow tests/test_models.py
 
 # The one command CI runs: format, lint, types, import contracts, tests with coverage, spec drift.
 check:
@@ -75,6 +80,11 @@ api-check: openapi-check api-lint api-breaking schemathesis
 audit:
 	set -o pipefail; uv export --locked --no-emit-project --all-groups --quiet \
 		| $(PIP_AUDIT) --disable-pip -r /dev/stdin
+
+# Downloads the pinned model for VLM_BACKEND (default mlx) into MODELS_PATH (default models/):
+# make download-models VLM_BACKEND=transformers
+download-models:
+	scripts/download_models.sh
 
 docker-build:
 	docker build -t formlens:local .

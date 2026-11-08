@@ -98,7 +98,8 @@ warn_required_dynamic_aliases = true
 [tool.pytest.ini_options]
 minversion = "9.2"
 testpaths = ["tests"]
-addopts = "-ra"
+# `slow` tests need the downloaded models; `make test-models` runs them (-m slow, the last -m wins).
+addopts = "-ra -m \"not slow\""
 # strict_config, strict_markers, strict_parametrization_ids and strict_xfail.
 strict = true
 # A deprecation or resource warning is a failure, not noise in the summary.
@@ -107,6 +108,7 @@ filterwarnings = ["error"]
 required_plugins = ["pytest-timeout>=2.4"]
 timeout = 60
 markers = [
+    "slow: tests that need the downloaded models; deselected by default, run with make test-models",
     "concurrency: tests that fire competing requests in parallel to prove an atomic guard",
 ]
 

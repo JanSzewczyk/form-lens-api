@@ -179,7 +179,9 @@ curl http://127.0.0.1:8000/health
 | `make lint` | Ruff lint |
 | `make typecheck` | mypy, strict |
 | `make imports` | import-linter contracts (module boundaries) |
-| `make test` | pytest |
+| `make test` | pytest, without the `slow` tests that need the downloaded models |
+| `make test-models` | The `slow` tests: fail unless the pinned model files are under `MODELS_PATH` (run `make download-models` first) |
+| `make download-models` | Download the pinned Granite-Docling model for `VLM_BACKEND` into `MODELS_PATH` (needs network, uv and about 0.6 GB) |
 | `make check` | What CI runs: format check, lint, mypy, import contracts, tests with coverage, OpenAPI drift |
 | `make openapi` | Regenerate `openapi.json` from the app (never edit it by hand) |
 | `make openapi-check` | Fail if `openapi.json` is out of date |

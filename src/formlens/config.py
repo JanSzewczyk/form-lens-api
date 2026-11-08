@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Literal, cast
 
 from fastapi import Request
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 type Environment = Literal["local", "test", "production"]
@@ -56,7 +56,10 @@ class Settings(BaseSettings):
 
     models_path: Path = Field(
         default=Path("models"),
-        description="Folder with the downloaded document models; a relative path is read from the working directory.",
+        description=(
+            "Folder with the downloaded document models; a relative path is read from the working directory. "
+            "An empty value is refused."
+        ),
     )
     vlm_backend: VlmBackend = Field(
         default="mlx",
@@ -66,6 +69,15 @@ class Settings(BaseSettings):
     max_concurrency: int = Field(
         default=1, ge=1, description="Documents converted at the same time; the model is heavy, so keep it low."
     )
+
+    @field_validator("models_path", mode="before")
+    @classmethod
+    def _refuse_an_empty_models_path(cls, value: object) -> object:
+        """Refuse `MODELS_PATH=`: `Path("")` is the working directory, which no one means by an empty value."""
+        if isinstance(value, str) and value == "":
+            msg = "must not be empty; unset it to use 'models'"
+            raise ValueError(msg)
+        return value
 
     @property
     def resolved_log_format(self) -> Literal["json", "console"]:

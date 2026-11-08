@@ -4,6 +4,7 @@ import os
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 import pytest
@@ -23,9 +24,16 @@ if [ -n "${FAKE_HF_FAIL:-}" ]; then
     exit 1
 fi
 target="${@: -1}"
-mkdir -p "$target"
+mkdir -p -- "$target"
 echo '{}' > "$target/config.json"
 """
+
+
+class Use(Enum):
+    """What `run_script` does with a variable the test does not set to a text."""
+
+    DEFAULT = "the default of the fixture"
+    UNSET = "leave the variable out of the environment"
 
 
 @dataclass(frozen=True)
@@ -35,36 +43,58 @@ class Run:
     process: subprocess.CompletedProcess[str]
     models: Path
     calls: list[str]
+    cwd: Path
 
 
 type RunScript = Callable[..., Run]
 
 
 @pytest.fixture
-def run_script(tmp_path: Path) -> RunScript:
-    """Return a function that runs the script against one models folder and the fake downloader."""
+def fake_downloader(tmp_path: Path) -> Path:
+    """The path of a downloader that records its arguments in `$FAKE_HF_LOG` and creates the model files."""
     downloader = tmp_path / "fake-hf"
     downloader.write_text(FAKE_DOWNLOADER, encoding="utf-8")
     downloader.chmod(0o755)
+    return downloader
+
+
+@pytest.fixture
+def run_script(tmp_path: Path, fake_downloader: Path) -> RunScript:
+    """Return a function that runs the script from an empty working directory, with the fake downloader.
+
+    `models` is the absolute folder the script writes to unless `models_path` says otherwise. Every run
+    starts in `tmp_path / "cwd"`, so a relative `MODELS_PATH` never lands in the repository.
+    """
     models = tmp_path / "models"
+    cwd = tmp_path / "cwd"
+    cwd.mkdir()
     log = tmp_path / "calls.log"
 
-    def run(*, backend: str | None = None, fail: bool = False) -> Run:
+    def run(
+        *,
+        backend: str | None = None,
+        fail: bool = False,
+        models_path: str | Use = Use.DEFAULT,
+        hf_cli: str | None = None,
+    ) -> Run:
         env = {
             "PATH": os.environ["PATH"],
-            "HF_CLI": str(downloader),
-            "MODELS_PATH": str(models),
+            "HF_CLI": str(fake_downloader) if hf_cli is None else hf_cli,
             "FAKE_HF_LOG": str(log),
         }
+        if models_path is Use.DEFAULT:
+            env["MODELS_PATH"] = str(models)
+        elif isinstance(models_path, str):
+            env["MODELS_PATH"] = models_path
         if backend is not None:
             env["VLM_BACKEND"] = backend
         if fail:
             env["FAKE_HF_FAIL"] = "1"
         process = subprocess.run(  # noqa: S603  # the script under test, with a fixed argument list
-            [str(SCRIPT)], env=env, capture_output=True, text=True, check=False, timeout=30
+            [str(SCRIPT)], cwd=cwd, env=env, capture_output=True, text=True, check=False, timeout=30
         )
         calls = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
-        return Run(process=process, models=models, calls=calls)
+        return Run(process=process, models=models, calls=calls, cwd=cwd)
 
     return run
 
@@ -130,22 +160,7 @@ def test_a_failed_download_leaves_no_revision_marker(run_script: RunScript) -> N
     assert "Done" not in result.process.stdout
 
 
-# --- Stage 0 contract tests: invalid input, the downloader override, the marker, parity ----------
-
-
-def make_script_tree(root: Path) -> Path:
-    """Copy the script into `root/scripts/`, so its `cd ..` lands in `root` and the repository is untouched."""
-    copy = root / "scripts" / "download_models.sh"
-    copy.parent.mkdir(parents=True)
-    copy.write_bytes(SCRIPT.read_bytes())
-    copy.chmod(0o755)
-    return copy
-
-
-def write_fake_downloader(path: Path) -> Path:
-    path.write_text(FAKE_DOWNLOADER, encoding="utf-8")
-    path.chmod(0o755)
-    return path
+# --- invalid input, the downloader override, the marker, parity with the settings ------------------
 
 
 @pytest.mark.parametrize(
@@ -172,10 +187,18 @@ def test_only_the_two_exact_backend_names_are_accepted(run_script: RunScript, ba
     assert not result.models.exists()
 
 
-def test_make_passes_the_backend_variable_to_the_script_and_refuses_an_unknown_one() -> None:
-    """`make download-models VLM_BACKEND=cuda` is the documented form; it must stop before any download."""
-    result = subprocess.run(  # fixed arguments; no network is reached
-        ["make", "-s", "download-models", "VLM_BACKEND=cuda", "HF_CLI=/nonexistent/downloader"],  # noqa: S607
+@pytest.mark.parametrize(
+    ("argument", "message"),
+    [
+        ("VLM_BACKEND=cuda", "VLM_BACKEND must be 'mlx' or 'transformers', not 'cuda'"),
+        ("MODELS_PATH=", "MODELS_PATH must not be empty"),
+    ],
+    ids=["unknown-backend", "empty-models-path"],
+)
+def test_make_passes_its_variables_to_the_script_and_refuses_a_bad_one(argument: str, message: str) -> None:
+    """`make download-models VLM_BACKEND=…` is the documented form; a bad value stops it before any download."""
+    result = subprocess.run(  # noqa: S603  # fixed arguments; no network is reached
+        ["make", "-s", "download-models", argument, "HF_CLI=/nonexistent/downloader"],  # noqa: S607
         cwd=SCRIPT.parent.parent,
         env={"PATH": os.environ["PATH"]},
         capture_output=True,
@@ -184,44 +207,41 @@ def test_make_passes_the_backend_variable_to_the_script_and_refuses_an_unknown_o
         timeout=30,
     )
 
-    assert result.returncode != 0
-    assert "VLM_BACKEND must be 'mlx' or 'transformers', not 'cuda'" in result.stderr
+    assert result.returncode == 2
+    assert message in result.stderr
 
 
-def test_a_missing_downloader_is_a_clear_error_and_creates_nothing(tmp_path: Path) -> None:
-    script = make_script_tree(tmp_path)
-    environment = {"PATH": os.environ["PATH"], "HF_CLI": "no-such-downloader-4f7a", "MODELS_PATH": str(tmp_path / "m")}
+def test_a_missing_downloader_is_a_clear_error_and_creates_nothing(run_script: RunScript) -> None:
+    result = run_script(hf_cli="no-such-downloader-4f7a")
 
-    process = subprocess.run(  # noqa: S603  # the script under test
-        [str(script)], env=environment, capture_output=True, text=True, check=False, timeout=30
-    )
-
-    assert process.returncode == 1
-    assert "'no-such-downloader-4f7a' not found" in process.stderr
-    assert "HF_CLI" in process.stderr
-    assert not (tmp_path / "m").exists()
+    assert result.process.returncode == 1
+    assert "'no-such-downloader-4f7a' not found" in result.process.stderr
+    assert "HF_CLI" in result.process.stderr
+    assert not result.models.exists()
 
 
-def test_the_downloader_override_may_carry_arguments(tmp_path: Path) -> None:
-    script = make_script_tree(tmp_path)
-    downloader = write_fake_downloader(tmp_path / "fake-hf")
-    log = tmp_path / "calls.log"
+@pytest.mark.parametrize("hf_cli", [" ", "   ", "\t"], ids=["one-space", "spaces", "tab"])
+def test_a_downloader_command_of_only_blanks_is_a_clear_error_and_creates_nothing(
+    run_script: RunScript, hf_cli: str
+) -> None:
+    """Bash 3.2 (macOS) reports `HF[0]: unbound variable` for an empty array; the script says what is wrong."""
+    result = run_script(hf_cli=hf_cli)
+
+    assert result.process.returncode == 1
+    assert "HF_CLI is empty or only spaces" in result.process.stderr
+    assert "unbound" not in result.process.stderr
+    assert result.calls == []
+    assert not result.models.exists()
+
+
+def test_the_downloader_override_may_carry_arguments(run_script: RunScript, fake_downloader: Path) -> None:
     pin = MODEL_PINS["mlx"]
-    environment = {
-        "PATH": os.environ["PATH"],
-        "HF_CLI": f"{downloader} --profile offline",
-        "MODELS_PATH": str(tmp_path / "m"),
-        "FAKE_HF_LOG": str(log),
-    }
 
-    process = subprocess.run(  # noqa: S603  # the script under test
-        [str(script)], env=environment, capture_output=True, text=True, check=False, timeout=30
-    )
+    result = run_script(hf_cli=f"{fake_downloader} --profile offline")
 
-    folder = tmp_path / "m" / pin.folder
-    assert process.returncode == 0, process.stderr
-    assert log.read_text(encoding="utf-8").splitlines() == [
-        f"--profile offline download {pin.repo} --revision {pin.revision} --local-dir {folder}"
+    assert result.process.returncode == 0, result.process.stderr
+    assert result.calls == [
+        f"--profile offline download {pin.repo} --revision {pin.revision} --local-dir {result.models / pin.folder}"
     ]
 
 
@@ -264,33 +284,55 @@ def test_a_failed_download_over_an_older_revision_removes_the_old_marker(run_scr
     assert not marker.exists()
 
 
-def test_a_relative_models_path_lands_where_the_service_reads_it(tmp_path: Path) -> None:
-    """Two documented rules disagree.
+def test_an_empty_models_path_is_refused_and_nothing_is_written(run_script: RunScript) -> None:
+    result = run_script(models_path="")
 
-    The script header and README say a relative `MODELS_PATH` is read from the repository root.
-    `.env.example`, the README settings table and `Settings.models_path` say it is read from the
-    working directory. Run from anywhere but the root, the model lands where the service will not
-    look. The script runs from a copy in `tmp_path`, so the real repository is not written to.
-    """
-    script = make_script_tree(tmp_path)
-    downloader = write_fake_downloader(tmp_path / "fake-hf")
-    elsewhere = tmp_path / "elsewhere"
-    elsewhere.mkdir()
+    assert result.process.returncode == 2
+    assert "MODELS_PATH must not be empty" in result.process.stderr
+    assert result.calls == []
+    assert list(result.cwd.iterdir()) == []
+    assert not result.models.exists()
+
+
+def test_a_models_path_that_starts_with_a_dash_is_a_folder_and_not_an_option(run_script: RunScript) -> None:
     pin = MODEL_PINS["mlx"]
-    environment = {
-        "PATH": os.environ["PATH"],
-        "HF_CLI": str(downloader),
-        "MODELS_PATH": "weights",
-        "FAKE_HF_LOG": str(tmp_path / "calls.log"),
-    }
 
-    process = subprocess.run(  # noqa: S603  # the script under test
-        [str(script)], cwd=elsewhere, env=environment, capture_output=True, text=True, check=False, timeout=30
-    )
+    result = run_script(models_path="-x")
 
-    assert process.returncode == 0, process.stderr
-    service_reads = elsewhere / Settings(_env_file=None, models_path=Path("weights")).models_path / pin.folder
-    assert (service_reads / ".revision").is_file()
+    assert result.process.returncode == 0, result.process.stderr
+    assert (result.cwd / "-x" / pin.folder / ".revision").read_text(encoding="utf-8").strip() == pin.revision
+    assert result.calls == [f"download {pin.repo} --revision {pin.revision} --local-dir ./-x/{pin.folder}"]
+
+
+def settings_folders(value: str | None, monkeypatch: pytest.MonkeyPatch, cwd: Path) -> list[Path]:
+    """Where the service looks for the model with `MODELS_PATH=value` (unset for None), or [] if it refuses to start."""
+    if value is not None:
+        monkeypatch.setenv("MODELS_PATH", value)
+    try:
+        settings = Settings(_env_file=None)
+    except ValidationError:
+        return []
+    return [cwd / settings.models_path / MODEL_PINS["mlx"].folder]
+
+
+@pytest.mark.parametrize(
+    "models_path",
+    [None, "weights", "nested/weights", "-x", ""],
+    ids=["unset", "relative", "nested", "leading-dash", "empty"],
+)
+def test_the_script_downloads_to_the_folder_the_settings_read(
+    run_script: RunScript, monkeypatch: pytest.MonkeyPatch, models_path: str | None
+) -> None:
+    """Both are run from the same working directory with the same `MODELS_PATH`.
+
+    A value the settings refuse must be refused by the script too, and every other value must give the same
+    folder, so a model is never downloaded to a place the service does not read.
+    """
+    run = run_script(models_path=Use.UNSET if models_path is None else models_path)
+
+    downloaded = sorted(marker.parent for marker in run.cwd.rglob(".revision"))
+
+    assert downloaded == settings_folders(models_path, monkeypatch, run.cwd)
 
 
 def settings_accept_backend(backend: str, monkeypatch: pytest.MonkeyPatch) -> bool:
@@ -310,12 +352,10 @@ def settings_accept_backend(backend: str, monkeypatch: pytest.MonkeyPatch) -> bo
 def test_the_script_and_the_settings_accept_the_same_backend_names(
     run_script: RunScript, monkeypatch: pytest.MonkeyPatch, backend: str
 ) -> None:
-    """A value one of them takes and the other refuses means a download the service cannot use.
+    """A name one of them takes and the other refuses means a download the service cannot use.
 
-    An exported empty `VLM_BACKEND=` (a shell `export VLM_BACKEND=` or a CI variable that renders empty) is
-    read by the script as "not set" (`${VLM_BACKEND:-mlx}`) and downloads the mlx model, while the settings
-    refuse it and the service will not start. Either make the script reject an empty value or set
-    `env_ignore_empty=True` on the settings; no source says which is meant.
+    An exported empty `VLM_BACKEND=` (a shell `export VLM_BACKEND=` or a CI variable that renders empty)
+    is refused by both.
     """
     settings_accept = settings_accept_backend(backend, monkeypatch)
 

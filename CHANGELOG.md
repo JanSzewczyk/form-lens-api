@@ -8,6 +8,7 @@ All notable changes to this project are recorded here. The format follows
 ### Added
 
 - Settings `MODELS_PATH`, `VLM_BACKEND` (`mlx` or `transformers`), `MAX_UPLOAD_MB` and `MAX_CONCURRENCY`.
+  An empty `MODELS_PATH` is refused, by the settings and by the download script.
 - `make download-models` and `scripts/download_models.sh`: download the pinned Granite-Docling
   revision for the chosen backend into `MODELS_PATH`; running it again downloads nothing.
 - `make test-models` and the `slow` test marker (deselected by default): fail unless the pinned

@@ -11,7 +11,7 @@ import pytest
 from pydantic import ValidationError
 
 from formlens.config import Settings
-from tests.model_pins import MODEL_PINS
+from formlens.modelspec import MODEL_SPECS, VlmBackend
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "download_models.sh"
 
@@ -100,8 +100,10 @@ def run_script(tmp_path: Path, fake_downloader: Path) -> RunScript:
 
 
 @pytest.mark.parametrize("backend", ["mlx", "transformers"])
-def test_the_pinned_revision_of_the_backend_is_downloaded_into_its_folder(run_script: RunScript, backend: str) -> None:
-    pin = MODEL_PINS[backend]
+def test_the_pinned_revision_of_the_backend_is_downloaded_into_its_folder(
+    run_script: RunScript, backend: VlmBackend
+) -> None:
+    pin = MODEL_SPECS[backend]
 
     result = run_script(backend=backend)
 
@@ -113,7 +115,7 @@ def test_the_pinned_revision_of_the_backend_is_downloaded_into_its_folder(run_sc
 
 
 def test_the_mlx_model_is_the_default_backend(run_script: RunScript) -> None:
-    pin = MODEL_PINS["mlx"]
+    pin = MODEL_SPECS["mlx"]
 
     result = run_script()
 
@@ -140,7 +142,7 @@ def test_a_model_already_at_the_pinned_revision_is_not_downloaded_again(run_scri
 
 
 def test_a_model_at_another_revision_is_downloaded_again(run_script: RunScript) -> None:
-    pin = MODEL_PINS["mlx"]
+    pin = MODEL_SPECS["mlx"]
     first = run_script()
     (first.models / pin.folder / ".revision").write_text("0" * 40 + "\n", encoding="utf-8")
 
@@ -151,7 +153,7 @@ def test_a_model_at_another_revision_is_downloaded_again(run_script: RunScript) 
 
 
 def test_a_failed_download_leaves_no_revision_marker(run_script: RunScript) -> None:
-    pin = MODEL_PINS["mlx"]
+    pin = MODEL_SPECS["mlx"]
 
     result = run_script(fail=True)
 
@@ -235,7 +237,7 @@ def test_a_downloader_command_of_only_blanks_is_a_clear_error_and_creates_nothin
 
 
 def test_the_downloader_override_may_carry_arguments(run_script: RunScript, fake_downloader: Path) -> None:
-    pin = MODEL_PINS["mlx"]
+    pin = MODEL_SPECS["mlx"]
 
     result = run_script(hf_cli=f"{fake_downloader} --profile offline")
 
@@ -246,7 +248,7 @@ def test_the_downloader_override_may_carry_arguments(run_script: RunScript, fake
 
 
 def test_a_marker_without_the_model_files_is_not_taken_for_a_finished_download(run_script: RunScript) -> None:
-    pin = MODEL_PINS["mlx"]
+    pin = MODEL_SPECS["mlx"]
     first = run_script()
     (first.models / pin.folder / "config.json").unlink()
 
@@ -257,7 +259,7 @@ def test_a_marker_without_the_model_files_is_not_taken_for_a_finished_download(r
 
 
 def test_each_backend_keeps_its_own_folder_and_marker(run_script: RunScript) -> None:
-    mlx, transformers = MODEL_PINS["mlx"], MODEL_PINS["transformers"]
+    mlx, transformers = MODEL_SPECS["mlx"], MODEL_SPECS["transformers"]
     run_script(backend="mlx")
 
     second = run_script(backend="transformers")
@@ -273,7 +275,7 @@ def test_each_backend_keeps_its_own_folder_and_marker(run_script: RunScript) -> 
 
 def test_a_failed_download_over_an_older_revision_removes_the_old_marker(run_script: RunScript) -> None:
     """The marker says "this folder holds the pinned revision"; a download that died half way voids it."""
-    pin = MODEL_PINS["mlx"]
+    pin = MODEL_SPECS["mlx"]
     first = run_script()
     marker = first.models / pin.folder / ".revision"
     marker.write_text("0" * 40 + "\n", encoding="utf-8")
@@ -295,7 +297,7 @@ def test_an_empty_models_path_is_refused_and_nothing_is_written(run_script: RunS
 
 
 def test_a_models_path_that_starts_with_a_dash_is_a_folder_and_not_an_option(run_script: RunScript) -> None:
-    pin = MODEL_PINS["mlx"]
+    pin = MODEL_SPECS["mlx"]
 
     result = run_script(models_path="-x")
 
@@ -312,7 +314,7 @@ def settings_folders(value: str | None, monkeypatch: pytest.MonkeyPatch, cwd: Pa
         settings = Settings(_env_file=None)
     except ValidationError:
         return []
-    return [cwd / settings.models_path / MODEL_PINS["mlx"].folder]
+    return [cwd / settings.models_path / MODEL_SPECS["mlx"].folder]
 
 
 @pytest.mark.parametrize(

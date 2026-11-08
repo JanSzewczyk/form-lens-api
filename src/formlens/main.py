@@ -58,13 +58,19 @@ def create_app(settings: Settings | None = None, *, parser_factory: ParserFactor
         try:
             application.state.parser = await run_in_threadpool(factory, settings)
         except Exception as exc:
-            # Once, here; uvicorn prints the traceback when the startup fails, so none is logged.
+            # Once, here; uvicorn prints the traceback when the startup fails, so none is logged. Only a
+            # missing or incomplete model is cured by downloading it; any other failure gets no such hint.
+            fields = (
+                {"hint": "run `make download-models`, then start the service again"}
+                if isinstance(exc, ModelUnavailable)
+                else {}
+            )
             log.error(  # noqa: TRY400
                 "model_load_failed",
                 backend=settings.vlm_backend,
                 models_path=str(settings.models_path),
                 reason=str(exc),
-                hint="run `make download-models`, then start the service again",
+                **fields,
             )
             raise
         yield

@@ -80,3 +80,19 @@ def test_the_default_factory_refuses_an_empty_models_folder_before_it_imports_do
     [failed] = [e for e in events if e["event"] == "model_load_failed"]
     assert failed["models_path"] == str(tmp_path)
     assert "ibm-granite/granite-docling-258M" in failed["reason"]
+
+
+def test_a_failure_that_is_not_a_missing_model_logs_no_download_hint(capsys: pytest.CaptureFixture[str]) -> None:
+    def factory(_: Settings) -> DocumentParser:
+        msg = "out of memory"
+        raise RuntimeError(msg)
+
+    app = create_app(make_settings(), parser_factory=factory)
+
+    with pytest.raises(RuntimeError, match="out of memory"), TestClient(app):
+        pass
+
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith("{")]
+    [failed] = [e for e in events if e["event"] == "model_load_failed"]
+    assert failed["reason"] == "out of memory"
+    assert "hint" not in failed

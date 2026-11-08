@@ -39,6 +39,14 @@ All notable changes to this project are recorded here. The format follows
   instead of failing the request; two `file` parts are a 422 `repeated_parameter` instead of the last
   one winning silently; a parser that raises something unexpected, or returns a negative page count or
   time, is a 500 `parse-failed` and its error text never reaches a log.
+- A 503 that carries `Retry-After` (a full parser) is logged at `warning` in both `request_refused`
+  and `request_completed`; a 503 without one (`model-unavailable`) and every 500 stay at `error`.
+- The multipart parser's loggers (`python_multipart`, `multipart`) are held at `ERROR`: at `WARNING`
+  they quote a byte of a malformed body.
+- The `document_parsed` failure event carries `conversion_status` (`failure`, `partial_success` for
+  a timeout or an incomplete result), so they are told apart; the cause type alone was `RuntimeError`.
+- `model_load_failed` carries the `make download-models` hint only when the model is missing or
+  incomplete, not for any other start-up failure.
 - The OpenAPI document is built once even when several first requests ask for it together.
 
 ### Changed

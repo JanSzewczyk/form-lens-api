@@ -34,6 +34,10 @@ All notable changes to this project are recorded here. The format follows
 
 ### Changed
 
+- `torch` and `torchvision` are direct dependencies, and on Linux they come from PyTorch's CPU index
+  (`2.15.0+cpu`, about 210 MB) instead of PyPI's CUDA build (15 `nvidia-*` packages, `cuda-toolkit`
+  and `triton`, about 3 GB of wheels); macOS keeps PyPI's `torch`. `make audit` strips `+cpu` so
+  pip-audit checks the PyPI release instead of skipping the package.
 - `make test-models` runs every `slow` test (`pytest -m slow`), not only the model files check. The
   `slow` tests read `MODELS_PATH` and `VLM_BACKEND` from the environment and `.env` and no other
   setting.

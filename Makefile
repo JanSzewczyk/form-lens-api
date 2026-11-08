@@ -77,9 +77,12 @@ schemathesis:
 api-check: openapi-check api-lint api-breaking schemathesis
 
 # Every dependency group, the contract tooling too. pipefail: a failed export must not pass as
-# an empty, clean audit.
+# an empty, clean audit. On Linux the lock pins torch and torchvision as `2.15.0+cpu`, a local version
+# that is not on PyPI, so pip-audit would skip them and still exit 0; sed drops the `+cpu` so the same
+# release on PyPI is audited (the advisories name the release, not the build).
 audit:
 	set -o pipefail; uv export --locked --no-emit-project --all-groups --quiet \
+		| sed 's/+cpu / /' \
 		| $(PIP_AUDIT) --disable-pip -r /dev/stdin
 
 # Downloads the pinned model for VLM_BACKEND (default mlx) into MODELS_PATH (default models/). Both

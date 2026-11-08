@@ -481,8 +481,9 @@ and `MODELS_PATH=/models`; `make docker-run` and `compose.yaml` mount your `MODE
 (`models/` by default) there, read-only. Download the `transformers` model first, as above: it is a
 different folder from the `mlx` one. Without it the container stops at start-up and logs
 `model_load_failed`. The `transformers` backend has not been run in a container yet; the CI job
-checks only this start-up failure. The Linux install pulls the CUDA build of `torch` from PyPI (about
-3 GB of wheels); see [Open issues](docs/explanation/architecture.md#open-issues).
+checks only this start-up failure. On Linux `torch` and `torchvision` come from PyTorch's CPU index
+(`torch 2.15.0+cpu`, about 210 MB), not from PyPI's CUDA build (about 3 GB of wheels); macOS keeps
+PyPI's `torch`. See [Open issues](docs/explanation/architecture.md#open-issues).
 
 `compose.yaml` reads `.env` through `env_file` with `required: false`, which needs Docker Compose
 2.24 or newer. `make docker-run` and `compose.yaml` force `ENVIRONMENT=production`, `HOST`, `PORT`,

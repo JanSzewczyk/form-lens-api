@@ -71,4 +71,7 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
 - The model downloader is pinned in `scripts/download_models.sh` (`uvx --from huggingface_hub==2.4.0 hf`).
   Dependabot does not bump it, and it runs outside `uv.lock`, so `make audit` does not see it or its
   dependencies (see `docs/licenses.md`). Bump it by hand.
+- `torch` and `torchvision` are direct dependencies with a CPU index on Linux (`[tool.uv.sources]`);
+  pip-audit skips the `+cpu` local version, so `make audit` strips it. A `torch` bump needs the version
+  on both PyPI and the PyTorch CPU index.
 - `uv run --python 3.15t` replaces `.venv` with the free-threaded build; `uv sync` restores it.

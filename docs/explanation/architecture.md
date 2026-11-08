@@ -162,15 +162,14 @@ mlx-vlm and Pillow out of everything but the adapter, and the adapter out of eve
 
 ## Open issues
 
-- **The Linux install pulls the CUDA build of `torch`.** `uv.lock` holds `torch` 2.15.0 from PyPI,
-  whose Linux wheels depend on 15 `nvidia-*` packages, `cuda-toolkit` and `triton`: about 3 GB of
-  wheels for `x86_64`. Every Linux `uv sync --locked` (the `check`, `api` and `docker` jobs and the
-  Docker image) installs them, although the service runs on a CPU there. The fix that was tried
-  in a scratch copy is a CPU index for Linux (`[tool.uv.sources]` with an explicit
-  `https://download.pytorch.org/whl/cpu` index and `sys_platform == 'linux'`) **plus** `torch` and
-  `torchvision` as direct dependencies, because `sources` apply to direct dependencies only. It drops
-  the 17 packages from the lock and brings `torch` to 210 MB on Linux, but it changes the runtime
-  dependencies and the lock, so it waits for a decision.
+- **`pip-audit` and Dependabot on `torch 2.15.0+cpu`.** On Linux the lock pins `torch` and
+  `torchvision` to the CPU wheels of `https://download.pytorch.org/whl/cpu` (`[tool.uv.sources]`
+  with an explicit index and `sys_platform == 'linux'`; they are direct dependencies because
+  `sources` apply to those only). `+cpu` is a local version that is not on PyPI, so pip-audit skips
+  it (and exits 0). `make audit` therefore strips `+cpu` before auditing, so the same release on
+  PyPI is checked; this was shown with a known-vulnerable `torch==1.13.0`. Dependabot's behaviour
+  on the second index is unverified. A new `torch` release must exist on both indexes before
+  `uv lock` can take it.
 - **The `transformers` backend and the container have not been run.** Only `mlx` on Apple Silicon was
   downloaded, loaded and measured. The Docker build and the container start were not run either:
   the builder stage gets `build-essential` because `pyclipper` and `tree-sitter` have only source

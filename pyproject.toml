@@ -15,6 +15,10 @@ dependencies = [
     "pydantic-settings>=2.16.2",
     "python-multipart>=0.0.33",
     "structlog>=26.1.0",
+    # Docling needs them already. Listed here because `[tool.uv.sources]` applies to direct dependencies
+    # only: it keeps Linux off the CUDA build of torch (see the sources below).
+    "torch>=2.15.0",
+    "torchvision>=0.29.2",
     "uvicorn[standard]>=0.54.0",
 ]
 
@@ -117,6 +121,18 @@ markers = [
 [tool.uv]
 required-version = ">=0.13.7"
 default-groups = ["dev", "test"]
+
+# On Linux, torch from PyPI pulls the CUDA stack (15 nvidia-* packages, cuda-toolkit, triton: about
+# 3 GB of wheels). The service runs on a CPU there, so Linux takes the CPU wheels (about 210 MB);
+# macOS and Windows keep PyPI's torch.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.coverage.run]
 branch = true

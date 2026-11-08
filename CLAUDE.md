@@ -28,6 +28,10 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
 - Service core: `config.py`, `modelspec.py` (the pinned model repositories, revisions and files),
   `logging_config.py`, `middleware.py`, `problems.py`, `openapi.py`,
   `types.py`, `pagination.py`, `query.py`, `health/`.
+- `parsing/`: the first domain module (`POST /v1/documents/parse`). `docling_parser.py` is the only
+  module that imports Docling, inside `build_docling_parser`, and only `main.py` imports it; the rest
+  works against the `DocumentParser` port, with `tests/fakes.py: FakeParser`. Import contracts enforce
+  both. `tests/schemathesis_app.py` is the app `make schemathesis` fuzzes (fake parser).
 - Add structure to a module only when it hurts (see `docs/explanation/architecture.md`).
   New modules start like `docs/how-to/add-a-module.md` says.
 

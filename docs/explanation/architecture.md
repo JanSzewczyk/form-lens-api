@@ -65,65 +65,117 @@ test that fails without it. See [add-a-module](../how-to/add-a-module.md).
 
 ## FormLens components
 
-Stage 0 ships the empty service. Everything marked *planned* (dotted arrows) arrives in Stage 1 or later and does not exist yet.
-
 ```mermaid
 flowchart TD
     client["Client"]
-    subgraph service["formlens (exists)"]
-        main["main.create_app: wiring, middleware, problem handlers"]
-        health["health: GET /health, GET /health/ready"]
-        config["config.Settings: MODELS_PATH, VLM_BACKEND, MAX_UPLOAD_MB, MAX_CONCURRENCY"]
+    subgraph service["formlens"]
+        main["main.create_app: wiring, middleware, problem handlers, lifespan"]
+        body["BodyLimitMiddleware: 413 before the body is read"]
+        router["parsing.router: POST /v1/documents/parse"]
+        deps["parsing.dependencies: read_upload, get_parser, get_slots"]
+        svc["parsing.service.DocumentService: size, type, slot, parser, one log event"]
+        slots["parsing.slots.ParseSlots: non-blocking, else 503 busy"]
+        port["parsing.ports.DocumentParser (Protocol)"]
+        docling["parsing.docling_parser.DoclingParser: the only module that imports Docling"]
+        health["health: GET /health, GET /health/ready (model check)"]
+        spec["modelspec: pinned repository, revision, files per backend"]
+        config["config: Settings, ModelSettings"]
     end
-    subgraph planned["Planned (Stage 1)"]
-        parsing["parsing/: router, service, Parser Protocol"]
-        docling["Docling adapter: VlmPipeline with Granite-Docling"]
-        fake["Fake Parser, so make check never loads a model"]
-    end
+    fake["tests/fakes.FakeParser: make check never loads a model"]
     models[("MODELS_PATH: pinned model, make download-models")]
-    client --> main --> health
-    main -.-> parsing -.-> docling -.-> models
-    parsing -.-> fake
+    client --> main --> body --> router --> svc
+    router --> deps
+    svc --> slots
+    svc --> port
+    docling -. implements .-> port
+    fake -. implements .-> port
+    main --> docling
+    docling --> models
+    docling --> spec
     config --> main
+    main --> health
 ```
 
-The first domain module is `src/formlens/parsing/`, in the default shape. It depends on a `Parser`
-Protocol; the Docling adapter implements it, and a fake implements it for tests, so the gate runs
-without a model. The model is loaded from `MODELS_PATH` only, never fetched at run time.
+`src/formlens/parsing/` is the first domain module. The service depends on the `DocumentParser`
+Protocol; the Docling adapter implements it and a fake implements it for the tests, so `make check`
+runs without a model. `build_docling_parser` is the one function that loads Docling and the model; it
+runs once, in the lifespan, in a worker thread. The model comes from `MODELS_PATH` only and is never
+fetched at run time. The import contracts (`make imports`) keep Docling, torch, transformers,
+mlx-vlm and Pillow out of everything but the adapter, and the adapter out of everything but `main`.
 
 ## Decisions
 
-- **Python 3.15 stays.** A scratch environment installed `docling[vlm]` on Python 3.15.2, the
-  imports of `docling` and `mlx_vlm` worked, and one synthetic page converted through
-  `VlmPipeline` with the MLX model in 8 s with `HF_HUB_OFFLINE=1`. `uv add 'docling[vlm]'` also
-  resolved and locked in a throwaway copy of the project (189 packages) and `uv sync --locked`
-  passed there. The 3.14 fallback was not needed.
+- **Python 3.15 stays.** `docling[vlm]` installed on Python 3.15.2 and resolved and locked with
+  `uv sync --locked` (189 packages). The 3.14 fallback was not needed.
 - **Docling is a runtime dependency.** `docling[vlm]` and `python-multipart` are in
-  `[project].dependencies` and locked; `import formlens.main` imports neither Docling nor torch
-  (the adapter, added later, loads Docling lazily).
+  `[project].dependencies` and locked. `import formlens.main` imports neither Docling nor torch: the
+  adapter imports Docling inside `build_docling_parser`, and a test in a child interpreter checks
+  `sys.modules`.
+- **The preset API, with `pipeline_cls`.** The adapter builds
+  `VlmConvertOptions.from_preset("granite_docling", engine_options=...)` with
+  `MlxVlmEngineOptions` or `TransformersVlmEngineOptions`, and sets `pipeline_cls=VlmPipeline` on
+  both the PDF and the image format option. The legacy `GRANITEDOCLING_MLX` options raise a
+  `DeprecationWarning`, which is an error under `filterwarnings`. This was checked against docling
+  2.149.0. A test compares the repository the preset resolves with the one in `modelspec.py`.
+- **The model is loaded once, at start-up.** The lifespan builds the parser in a worker thread and
+  loads the model for PDF and image input. A failure logs `model_load_failed` once (backend, models
+  path, reason and the `make download-models` hint) and stops the start; readiness (`model`) is 503
+  until the parser exists. `build_docling_parser` checks the whole file list of the pinned model
+  first, because Docling does not notice an incomplete folder and fails in the middle of a request.
+- **`document_timeout` is soft.** `PARSE_TIMEOUT_SECONDS` goes to Docling as `document_timeout`,
+  which is checked between pages: one slow page runs to its end. A timeout, a failure and a partial
+  success are all 500 `parse-failed`; an incomplete text is never returned.
+- **The body cap is a pure ASGI middleware.** A `Content-Length` over `MAX_UPLOAD_MB` is a 413 at
+  once; a chunked body is counted and cut a megabyte past the limit; the service still checks the
+  exact size. The middleware never raises from `receive`.
+- **The type comes from magic bytes.** PDF (`%PDF-` in the first 1024 bytes), PNG, JPEG and TIFF
+  are told apart by their first bytes; the client's `Content-Type` and file name are ignored, and
+  the file name is never read, so it cannot reach a log. Empty is 400, an unknown signature is 415,
+  a known signature that Docling cannot open is 400.
+- **A full parser answers 503, not a queue.** `ParseSlots` is a `BoundedSemaphore` taken without
+  blocking; when every slot is taken the request gets 503 `parser-busy` with a constant
+  `Retry-After` of 5 seconds. A parallel test (`concurrency` marker) proves it, and two mutants of
+  the guard (no semaphore, a non-atomic counter) both fail it.
+- **The adapter writes a temporary file under a neutral name.** Docling logs the input file name at
+  INFO; the adapter writes `upload.<ext>` into a fresh temporary folder, removed also on error.
+  The loggers of Docling and its libraries are held at `WARNING`, and the redaction masks keys that
+  could hold a document or its name.
 - **The model pins and the two model settings have one source each.** `src/formlens/modelspec.py`
   holds the repository, revision and file list per backend. `ModelSettings` in `config.py` holds
   `MODELS_PATH` and `VLM_BACKEND`; `Settings` inherits it, and `scripts/resolve_model.py` reads it
   for `make download-models`. A `.env` therefore moves the download and the service together.
   `tests/test_docs.py` keeps `docs/licenses.md` in step with the pins.
 - **The model is downloaded by a script, not by Docling.** `make download-models` downloads the
-  revision pinned in `modelspec.py` and writes `MODELS_PATH/<owner>--<repo>`, the folder name Docling looks for under its
-  `artifacts_path` (`resolve_model_artifacts_path` in `docling/models/inference_engines/vlm/_utils.py`),
-  so Stage 1 can pass `settings.models_path` unchanged.
+  revision pinned in `modelspec.py` into `MODELS_PATH/<owner>--<repo>`, the folder name Docling
+  looks for under its `artifacts_path`, so the adapter passes `settings.models_path` unchanged.
 - **Tests that need the model are `slow`.** `make check` deselects them; `make test-models` runs
-  them and fails when the files are missing. A conversion test with the real model is a Stage 1
-  task.
-- **The core modules stay.** `pagination`, `query` and `types` have no caller yet; later list and
-  upload endpoints use them. `tests/probes.py` still serves the core tests.
+  all of them (`pytest -m slow`) and fails, not skips, when the files are missing. They read only
+  `MODELS_PATH` and `VLM_BACKEND`. They parse the synthetic documents through the real adapter, and
+  an offline test runs the service in a child process that records every network attempt
+  (`HF_HUB_OFFLINE` is read when `huggingface_hub` is imported, so the process must be new).
+- **Schemathesis fuzzes a fake-parser app.** `tests/schemathesis_app.py` builds the real app around
+  a `FakeParser`; `scripts/run_schemathesis.sh` starts it with `uvicorn --factory`. The production
+  code has no switch for it. The operation allows 415 for a schema-valid request, as Schemathesis
+  documents for a rejection the schema cannot express (the signature of a file).
+- **The core modules stay.** `pagination`, `query` and `types` have no caller yet; later list
+  endpoints use them. `tests/probes.py` still serves the core tests.
 
-## Carry-forward notes for Stage 1
+## Open issues
 
-Nothing here is implemented. Do each item when the module that needs it exists.
-
-- Check that `VlmPipeline` fetches no other model or file at run time (run a conversion with
-  `HF_HUB_OFFLINE=1` as the Stage 0 launch test did, and with the network cut).
-- Add the problem types the upload route needs (413 too large, 415 unsupported media type, 503
-  busy), each with its row in `docs/reference/problem-types.md`, and add `python-multipart`.
-- Guard concurrency with one atomic semaphore: when `MAX_CONCURRENCY` conversions are running,
-  answer 503 or 429 with `Retry-After`. Prove it with a parallel test marked `concurrency`, then
-  remove the guard once and confirm the test fails.
+- **The Linux install pulls the CUDA build of `torch`.** `uv.lock` holds `torch` 2.15.0 from PyPI,
+  whose Linux wheels depend on 15 `nvidia-*` packages, `cuda-toolkit` and `triton`: about 3 GB of
+  wheels for `x86_64`. Every Linux `uv sync --locked` (the `check`, `api` and `docker` jobs and the
+  Docker image) installs them, although the service runs on a CPU there. The fix that was tried
+  in a scratch copy is a CPU index for Linux (`[tool.uv.sources]` with an explicit
+  `https://download.pytorch.org/whl/cpu` index and `sys_platform == 'linux'`) **plus** `torch` and
+  `torchvision` as direct dependencies, because `sources` apply to direct dependencies only. It drops
+  the 17 packages from the lock and brings `torch` to 210 MB on Linux, but it changes the runtime
+  dependencies and the lock, so it waits for a decision.
+- **The `transformers` backend and the container have not been run.** Only `mlx` on Apple Silicon was
+  downloaded, loaded and measured. The Docker build and the container start were not run either:
+  the builder stage gets `build-essential` because `pyclipper` and `tree-sitter` have only source
+  distributions for Python 3.15; that is unverified.
+- **The `mlx-vlm` publisher is not confirmed by a person** (see [licenses](../licenses.md)).
+- **The free-threaded CI job is switched off**: the locked dependencies have no free-threaded wheels
+  (`av`, `docling-parse`, pyarrow).
+- **`document_timeout` does not stop a single page** (see Decisions).

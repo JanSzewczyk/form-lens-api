@@ -2,7 +2,9 @@
 
 from typing import Final
 
-RETRY_AFTER_SECONDS: Final = 5  # a constant for now; tune it after timing a page on the target machine
+# One page took 1.2 to 1.8 s on an M1 Pro with `mlx`; a longer document or the slower `transformers`
+# backend keeps the slot longer, so the wait stays a constant 5 seconds (README, "How long a page takes").
+RETRY_AFTER_SECONDS: Final = 5
 
 
 class InvalidFile(Exception):

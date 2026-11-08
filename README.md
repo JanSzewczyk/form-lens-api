@@ -19,10 +19,11 @@
 
 FormLens API by Szum-Tech turns forms into structured data with IBM's Granite-Docling model,
 which runs on your machine through [Docling](https://github.com/docling-project/docling); no
-document leaves it. **Stage 0 is the working but empty skeleton**: typed settings (including the
-model settings), structured logging, one error format (Problem Details), a generated and checked
-OpenAPI contract, a pinned model download, Docker and CI. There is no parsing endpoint yet; it
-arrives in Stage 1. It runs on Python 3.15 with uv, Ruff, mypy (strict) and pytest.
+document leaves it. **Stage 1 adds the first endpoint**: `POST /v1/documents/parse` reads a PDF,
+PNG, JPEG or TIFF and returns its text, as Markdown or as plain text. Around it are typed
+settings, structured logging, one error format (Problem Details), a generated and checked OpenAPI
+contract, a pinned model download, Docker and CI. It runs on Python 3.15 with uv, Ruff, mypy
+(strict) and pytest.
 
 ### ⚡ Quick Start
 
@@ -31,16 +32,21 @@ git clone https://github.com/JanSzewczyk/form-lens-api.git
 cd form-lens-api
 cp .env.example .env
 make install
-make download-models   # about 0.6 GB, once; not needed to start the service in Stage 0
-make run
+make download-models   # about 0.6 GB, once; the service does not start without the model
+make run               # loads the model (about 5 s with warm disk caches, 11 s cold), then listens
 ```
 
-The API listens on http://127.0.0.1:8000; `curl http://127.0.0.1:8000/health` answers `{"status": "ok"}`.
+The API listens on http://127.0.0.1:8000. Read a document:
+
+```bash
+curl -F "file=@invoice.pdf" http://127.0.0.1:8000/v1/documents/parse
+```
 
 ## ✨ Features
 
 ### 🚀 What You Get
 
+- **📄 Document parsing** — `POST /v1/documents/parse` runs Granite-Docling through Docling on this machine and returns `text`, `page_count`, `elapsed_ms` and `model`; the file type is read from its bytes, at most `MAX_CONCURRENCY` documents are read at once, and a busy service answers 503 with `Retry-After`
 - **🩺 Health and readiness** — `GET /health` for liveness; `GET /health/ready` runs every registered check and answers a 503 problem that names the checks that failed
 - **🔧 Typed settings** — pydantic-settings reads the environment and `.env`, and the service refuses to start on an invalid value
 - **📝 Structured logs** — JSON or console output, an `X-Request-ID` on every response and log line, one access line per request, values under keys such as `password` or `token` redacted
@@ -58,7 +64,7 @@ The API listens on http://127.0.0.1:8000; `curl http://127.0.0.1:8000/health` an
 - [![structlog](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22structlog%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=structlog)](https://www.structlog.org/) — structured logging on top of the stdlib `logging`
 - [![Uvicorn](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22uvicorn%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Uvicorn)](https://www.uvicorn.org/) — the ASGI server, started by `python -m formlens`
 
-- **Docling with Granite-Docling** — the document model; planned for Stage 1 and **not a dependency yet**. Its licences are in [docs/licenses.md](docs/licenses.md)
+- **Docling with Granite-Docling** — the document model, a runtime dependency (`docling[vlm]`, with `torch` and, on Apple Silicon, `mlx-vlm`); `python-multipart` reads the upload. Their licences are in [docs/licenses.md](docs/licenses.md)
 
 ### 🧪 Quality Gates
 
@@ -74,7 +80,7 @@ The API listens on http://127.0.0.1:8000; `curl http://127.0.0.1:8000/health` an
 
 - [![uv](https://img.shields.io/badge/uv-DE5FE9?logo=uv&logoColor=white)](https://docs.astral.sh/uv/) — `uv.lock` and `uv sync --locked` everywhere; one uv version for the image and CI
 - [![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)](https://www.docker.com/) — multi-stage image, non-root user, `HEALTHCHECK`, and a `compose.yaml` that runs it read-only
-- [![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?logo=githubactions&logoColor=white)](https://docs.github.com/actions) — `make check`, the contract tooling, the image and a free-threaded run on every pull request
+- [![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?logo=githubactions&logoColor=white)](https://docs.github.com/actions) — `make check`, the contract tooling and the image on every pull request
 - [![Dependabot](https://img.shields.io/badge/Dependabot-025E8C?logo=dependabot&logoColor=white)](https://docs.github.com/code-security/dependabot) — weekly updates for uv, Actions and Docker images, after a 7-day cooldown
 - **pip-audit** — every locked dependency group, on every pull request and weekly
 
@@ -84,6 +90,7 @@ The API listens on http://127.0.0.1:8000; `curl http://127.0.0.1:8000/health` an
 - **Docs off by default** — `/docs`, `/redoc` and `/openapi.json` exist only with `DOCS_ENABLED=true`; leave them off on a public API
 - **`python -m`, not the `uvicorn` command** — the module configures logging before uvicorn starts (see [Run it](#run-it))
 - **One worker, one replica** — anything kept in memory is per process (see [Deployment](#-deployment))
+- **The model is never fetched at run time** — the service sets `HF_HUB_OFFLINE=1`, loads the pinned model from `MODELS_PATH` at start-up and stops with `model_load_failed` when a file is missing; a test proves that it makes no network attempt
 - **No authentication** — out of scope; put it in a dependency on the routers you want to protect, and publish the security scheme in the OpenAPI document
 - **Structure when it hurts** — a module starts with the default shape and grows only when its rules demand it ([architecture.md](docs/explanation/architecture.md))
 
@@ -187,7 +194,9 @@ whose path has none.
 make run
 ```
 
-`make run` is `python -m formlens`. The API listens on http://127.0.0.1:8000. The
+`make run` is `python -m formlens`. It loads the model first (a few seconds; the service answers
+nothing until it is loaded) and fails at once, with a `model_load_failed` log line, when the model
+is missing from `MODELS_PATH`. The API listens on http://127.0.0.1:8000. The
 interactive docs (`/docs`, `/redoc`) and the spec (`/openapi.json`) are **off by default**, and
 `.env.example` keeps them off. Set `DOCS_ENABLED=true` in your `.env` to read them while you
 develop; leave them off on a public API.
@@ -201,12 +210,50 @@ next to ours.
 #### 6. Check It Works
 
 ```bash
-curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/health/ready
 ```
 
 ```json
-{"status": "ok"}
+{"status": "ready", "checks": {"model": "ok"}}
 ```
+
+Then read a document (the synthetic files in `tests/data/` work):
+
+```bash
+# Markdown (the default)
+curl -F "file=@tests/data/text_layer.pdf" http://127.0.0.1:8000/v1/documents/parse
+# Plain text
+curl -F "file=@tests/data/sample.png" "http://127.0.0.1:8000/v1/documents/parse?format=text"
+```
+
+```json
+{"text": "FormLens synthetic sample Invoice 2024-001 Total: 120.00 EUR", "page_count": 1, "elapsed_ms": 1802, "model": "ibm-granite/granite-docling-258M-mlx"}
+```
+
+The small model sometimes repeats a line of a page; do not expect the text to equal the document.
+
+### ⏱ How long a page takes
+
+Measured on an Apple M1 Pro (10 cores, 32 GB, macOS 27.2), `VLM_BACKEND=mlx`, model revision
+`e9939db25d2f296c8678d0491c4609a8c596c50a` (`ibm-granite/granite-docling-258M-mlx`),
+`make run` and `curl`, one request at a time, one-page synthetic documents of `tests/data/`
+(520 x 160 px images, a one-page PDF):
+
+| Step | Time |
+| --- | --- |
+| Loading the model at start-up (`/health/ready` answers 200) | about 4.9 s with the files in the disk cache (three runs), about 11 s after a cold disk |
+| First request after start, PDF with a text layer | 1.8 s (three runs: 1.80, 1.84, 1.81) |
+| First request after start, PNG | 1.5 s (three runs: 1.53, 1.50, 1.52) |
+| Later requests, PDF with a text layer / PDF scan | 1.65 s / 1.24 s (five runs each) |
+| Later requests, PNG / JPEG / TIFF | 1.40 s / 1.21 s / 1.41 s (five runs each) |
+
+A page takes 1.2 to 1.8 s here, and the first request is only about 0.1 to 0.2 s slower than the
+next ones, because the model is loaded at start-up. These are the numbers of this one machine and
+backend; the `transformers` backend (the container's) has not been measured and is slower on a CPU.
+A document of many pages takes about that long per page, and `PARSE_TIMEOUT_SECONDS` is checked
+between pages only (it is not a hard stop inside one page). The `Retry-After` of a busy answer is a
+constant 5 seconds: a one-page document frees its slot sooner, but a longer document does not, and
+nothing here measures the container's backend, so the constant stays.
 
 ---
 
@@ -245,7 +292,8 @@ curl http://127.0.0.1:8000/health
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/health` | Liveness (`get_health`): `{"status": "ok"}` while the process serves requests |
-| `GET` | `/health/ready` | Readiness (`get_readiness`): 200 when every registered check passes, else a 503 problem |
+| `GET` | `/health/ready` | Readiness (`get_readiness`): 200 when every registered check passes (`model`: the document model is loaded), else a 503 problem |
+| `POST` | `/v1/documents/parse` | Parse a document (`parse_document`): multipart `file` (a PDF, PNG, JPEG or TIFF, at most `MAX_UPLOAD_MB`) and the query parameter `format` (`markdown`, the default, or `text`); answers `text`, `page_count`, `elapsed_ms` and `model` |
 
 The spec is generated from the app into `openapi.json` by `make openapi` and committed; never edit
 it by hand. `make check` fails when it is out of date, and `make api-check` lints it, compares it
@@ -259,12 +307,20 @@ curl http://127.0.0.1:8000/health/ready
 ```
 
 ```json
-{"status": "ready", "checks": {}}
+{"status": "ready", "checks": {"model": "ok"}}
 ```
 
-Register a check with `register_readiness_check(app, "storage", check)`; its name then appears in
-`checks` (`"ok"`), and a failing one turns the answer into a 503 `service-not-ready` problem that
-names the check, not the error.
+The `model` check passes once the document model is loaded. Register another with
+`register_readiness_check(app, "storage", check)`; its name then appears in `checks` (`"ok"`), and a
+failing one turns the answer into a 503 `service-not-ready` problem that names the check, not the
+error.
+
+Parsing answers with these errors (all Problem Details, see
+[docs/reference/problem-types.md](docs/reference/problem-types.md)): 400 `invalid-file` (empty, or a
+document the model cannot open), 413 `file-too-large`, 415 `unsupported-media-type`, 422
+`validation-error` (no `file`, an unknown `format`), 500 `parse-failed`, 503 `model-unavailable` and
+503 `parser-busy` with a `Retry-After` header. The file name and the content of a document are never
+logged; the log has one `document_parsed` line per request with the size, the page count and the time.
 
 ### 🚨 Errors
 
@@ -353,18 +409,15 @@ make test
 - `tests/test_download_models.py` runs the download script against a fake downloader, so it needs
   no network.
 
-### Manual offline check
+### Offline check
 
-Nobody has automated this yet. After `make download-models`, turn the network off (Wi-Fi off or
-cable out), then:
-
-```bash
-make run                         # in one terminal
-curl http://127.0.0.1:8000/health   # in another: {"status": "ok"}
-```
-
-The service must start and answer without network access. Stage 0 never loads the model, so this
-only proves that nothing at start-up needs the network; repeat it with a real conversion in Stage 1.
+The service sets `HF_HUB_OFFLINE=1` before it imports Docling and reads the model from
+`MODELS_PATH` only. `make test-models` proves that nothing reaches a network: a child process
+blocks and records every `connect`, `create_connection` and name lookup before it imports anything,
+starts the service (which loads the real model), parses a PDF and a PNG, and the test fails unless
+the recorded list is empty. A test of the guard itself makes three deliberate attempts and expects
+to see them. It does not replace turning the network off once on your own machine: after
+`make download-models`, switch Wi-Fi off, run `make run` and the `curl` above; the answer must come.
 
 ---
 
@@ -390,8 +443,10 @@ The service reads all settings from the environment or `.env` (see `.env.example
 | `PARSE_TIMEOUT_SECONDS` | `300` | Seconds one document may take to parse (1 or more) |
 
 Every key is optional. An invalid value stops the service at start-up instead of failing later.
-`MODELS_PATH`, `VLM_BACKEND`, `MAX_UPLOAD_MB`, `MAX_CONCURRENCY` and `PARSE_TIMEOUT_SECONDS` are
-read and validated, but nothing uses them until the parsing module lands.
+`MAX_UPLOAD_MB` is enforced twice: a body whose `Content-Length` is over the limit is refused with
+413 before it is read, and the service checks the exact size of the file. `MAX_CONCURRENCY` documents
+may be converted at the same time; the next request gets 503 `parser-busy` at once, nothing is queued.
+`PARSE_TIMEOUT_SECONDS` is passed to Docling as `document_timeout`, which is checked between pages.
 
 ---
 
@@ -412,6 +467,7 @@ Report a vulnerability through [GitHub issues](https://github.com/JanSzewczyk/fo
 ## 🚀 Deployment
 
 ```bash
+make download-models VLM_BACKEND=transformers   # the container runs `transformers`, not `mlx`
 make docker-build
 make docker-run
 docker compose up --build
@@ -420,9 +476,17 @@ docker compose up --build
 The image is multi-stage, runs as a non-root user and has a health check. `compose.yaml` runs it
 with a read-only filesystem. Docker is not required for development.
 
+**The image holds no model.** It sets `VLM_BACKEND=transformers` (`mlx` runs only on Apple Silicon)
+and `MODELS_PATH=/models`; `make docker-run` and `compose.yaml` mount your `MODELS_PATH` folder
+(`models/` by default) there, read-only. Download the `transformers` model first, as above: it is a
+different folder from the `mlx` one. Without it the container stops at start-up and logs
+`model_load_failed`. The `transformers` backend has not been run in a container yet; the CI job
+checks only this start-up failure. The Linux install pulls the CUDA build of `torch` from PyPI (about
+3 GB of wheels); see [Open issues](docs/explanation/architecture.md#open-issues).
+
 `compose.yaml` reads `.env` through `env_file` with `required: false`, which needs Docker Compose
-2.24 or newer. `make docker-run` and `compose.yaml` force `ENVIRONMENT=production`, `HOST` and
-`PORT`; everything else comes from your `.env`.
+2.24 or newer. `make docker-run` and `compose.yaml` force `ENVIRONMENT=production`, `HOST`, `PORT`,
+`VLM_BACKEND` and `MODELS_PATH`; everything else comes from your `.env`.
 
 Run one worker and one replica. Anything the app keeps in memory is per process, so a second
 worker or replica would not see it.
@@ -437,9 +501,11 @@ default). Behind a proxy, also set uvicorn's `FORWARDED_ALLOW_IPS`.
 `.github/workflows/ci.yml` runs on pushes to `main`, on pull requests, weekly and on demand:
 
 - `check` — `make check`, a coverage summary and the dependency audit; the only job of the weekly run
-- `api` — Spectral, oasdiff against `main` and Schemathesis (`make api-check`)
-- `docker` — builds the image and starts it through `compose.yaml` until its health check passes, then calls `/health`
-- `free-threaded` — the tests on free-threaded Python; informational, it never blocks a merge
+- `api` — Spectral, oasdiff against `main` and Schemathesis (`make api-check`). Schemathesis fuzzes `tests/schemathesis_app.py`, the real app with a fake parser, started with `uvicorn --factory`, so no model is loaded
+- `docker` — builds the image, runs it with an empty models folder and expects the documented start-up failure (a non-zero exit and `model_load_failed` in the output), then checks that `compose.yaml` is valid
+- `free-threaded` — the tests on free-threaded Python; informational, **switched off** (`if: false`) because the locked dependencies have no free-threaded wheels (`av`, `docling-parse`, pyarrow)
+
+None of these workflows has run on GitHub yet: they were written and checked locally only.
 
 Actions are pinned to exact version tags. `.github/dependabot.yml` proposes weekly updates for uv,
 GitHub Actions and the Docker images, grouping minor and patch releases.
@@ -450,7 +516,9 @@ GitHub Actions and the Docker images, grouping minor and patch releases.
 
 ```text
 src/formlens/
-  main.py            create_app(settings): wiring only
+  main.py            create_app(settings, parser_factory=None): wiring only
+  modelspec.py       the pinned model repositories, revisions and files per backend
+  parsing/           POST /v1/documents/parse: router, service, parser port, Docling adapter, body cap
   __main__.py        python -m formlens
   config.py          Settings (pydantic-settings), get_settings dependency
   logging_config.py  structlog on stdlib: JSON or console, redaction, idempotent
@@ -461,8 +529,8 @@ src/formlens/
   types.py           IsoDate, IsoAwareDatetime, WholeNumber
   pagination.py      Page[T] envelope and limit/offset parameters
   health/            GET /health (liveness), GET /health/ready (readiness, 503 problem)
-tests/               mirrors src
-scripts/             export_openapi.py, run_schemathesis.sh, download_models.sh
+tests/               mirrors src; data/ holds the synthetic documents
+scripts/             export_openapi.py, run_schemathesis.sh, download_models.sh, resolve_model.py
 docs/                how-to guides, reference, explanation, licences
 models/              downloaded models (git-ignored)
 ```
@@ -505,6 +573,7 @@ models/              downloaded models (git-ignored)
 - **`make openapi-check` fails** — the API changed; run `make openapi` and commit `openapi.json`
 - **`make schemathesis` says the port is in use** — set `SCHEMATHESIS_PORT` to a free port
 - **`make api-breaking` skips the check** — `origin/main` has no `openapi.json` yet
+- **The service stops at start-up with `model_load_failed`** — the pinned model is not in `MODELS_PATH` for this `VLM_BACKEND`; run `make download-models` with the same two settings
 - **`make test-models` fails** — the pinned model is not in `MODELS_PATH`; run `make download-models` with the same `VLM_BACKEND` and `MODELS_PATH` (both commands read the environment and `.env` as the service does)
 - **`make download-models` says uvx is missing** — install [uv](https://docs.astral.sh/uv/), or set `HF_CLI` to another Hugging Face downloader (split on spaces; no space inside its path)
 - **Compose rejects `env_file`** — `required: false` needs Docker Compose 2.24 or newer

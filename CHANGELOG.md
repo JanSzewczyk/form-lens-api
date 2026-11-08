@@ -7,6 +7,21 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- `POST /v1/documents/parse`: upload a PDF, PNG, JPEG or TIFF (multipart `file`) and get `text`,
+  `page_count`, `elapsed_ms` and `model`. `format=markdown` (default) or `format=text`. The type is
+  read from the file's bytes. Errors are Problem Details: `invalid-file` (400), `file-too-large`
+  (413), `unsupported-media-type` (415), `parse-failed` (500), `model-unavailable` (503) and
+  `parser-busy` (503 with `Retry-After`).
+- Docling with Granite-Docling (`docling[vlm]`) and `python-multipart` as runtime dependencies. The
+  model is loaded once at start-up from `MODELS_PATH` with `HF_HUB_OFFLINE=1`; a missing model stops
+  the start with a `model_load_failed` log line. Readiness has a `model` check.
+- At most `MAX_CONCURRENCY` documents are parsed at once; the next request gets 503 at once.
+- A body cap in front of the route refuses an oversized upload with 413 before it is read.
+- `tests/schemathesis_app.py`: the app with a fake parser that `make schemathesis` fuzzes, started
+  with `uvicorn --factory`.
+- Slow tests with the real model, and an offline test that runs the service in a child process
+  recording every network attempt (`make test-models` runs every `slow` test).
+- The measured page time on an Apple M1 Pro is in the README.
 - Settings `MODELS_PATH`, `VLM_BACKEND` (`mlx` or `transformers`), `MAX_UPLOAD_MB` and `MAX_CONCURRENCY`.
   An empty `MODELS_PATH` is refused, by the settings and by the download script.
 - Setting `PARSE_TIMEOUT_SECONDS` (default 300): how long one document may take to parse.
@@ -15,11 +30,18 @@ All notable changes to this project are recorded here. The format follows
 - `make test-models` and the `slow` test marker (deselected by default): fail unless the pinned
   model files are present.
 - `docs/licenses.md`: licences, pinned revisions and open checks for the models and libraries.
-- Architecture notes: the FormLens components, the Stage 0 decisions and the carry-forward notes
-  for Stage 1.
+- Architecture notes: the FormLens components, the decisions and the open issues.
 
 ### Changed
 
+- `make test-models` runs every `slow` test (`pytest -m slow`), not only the model files check. The
+  `slow` tests read `MODELS_PATH` and `VLM_BACKEND` from the environment and `.env` and no other
+  setting.
+- The image sets `VLM_BACKEND=transformers` and `MODELS_PATH=/models` and holds no model; `compose.yaml`
+  and `make docker-run` mount the models read-only. The `docker` CI job checks that the image fails
+  at start-up without a model, instead of waiting for it to become healthy.
+- The `free-threaded` CI job is switched off: the locked dependencies have no free-threaded wheels.
+- The readiness answer lists the `model` check.
 - `make download-models` and `make test-models` now read `MODELS_PATH` and `VLM_BACKEND` as the
   service does: the environment first, then `.env`, then the defaults. Before, they read the
   environment only, so a `.env` moved the service but not the download. The pinned repositories

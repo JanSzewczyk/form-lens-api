@@ -27,14 +27,14 @@ of them, chosen by `VLM_BACKEND`, with `make download-models`. The revisions are
 | `transformers` | [ibm-granite/granite-docling-258M](https://huggingface.co/ibm-granite/granite-docling-258M) | `982fe3b40f2fa73c365bdb1bcacf6c81b7184bfe` | Apache-2.0 | Front matter `license: apache-2.0` compared at that revision; model card body not read |
 
 The `mlx` repository lists `ibm-granite/granite-docling-258M` as its base model. Only the `mlx`
-model has been run (Stage 0 launch test, see below).
+model has been run: the Stage 0 launch test and, in Stage 1, the real-model tests and the timing
+measurement (see below).
 
 ## Libraries
 
 Docling (`docling[vlm]`) and `python-multipart` are runtime dependencies in `pyproject.toml`, and
-`uv.lock` records the versions below. They are the versions a scratch environment resolved on
-2026-11-08 for `docling[vlm]` on Python 3.15.2, macOS arm64, and that `uv add` locked against this
-project's `requires-python`. `docling` itself is a thin package: the code lives in `docling-slim`
+`uv.lock` records the versions below, which Stage 1 locked and ran on Python 3.15.2, macOS arm64
+(2026-11-08). `docling` itself is a thin package: the code lives in `docling-slim`
 (MIT), which it pulls in with the `standard` and `models-vlm-inline` extras.
 
 | Package | Version tried | Licence declared in the package metadata | Status |
@@ -45,11 +45,14 @@ project's `requires-python`. `docling` itself is a thin package: the code lives 
 | docling-ibm-models | 4.0.4 | MIT | Metadata only |
 | docling-parse | 7.24.2 | MIT | Metadata only |
 | [mlx](https://github.com/ml-explore/mlx) | 0.32.4 | MIT | **Unverified**: metadata only, PyPI page and licence file not read |
-| [mlx-vlm](https://pypi.org/project/mlx-vlm/) | 0.7.12 | MIT | **Unverified**: metadata only. PyPI `project_urls` give `Repository: https://github.com/Neywa-Labs/mlx-vlm` and `Homepage: https://www.neywalabs.ai`. It is locked now (Docling's `vlm` extra pulls it in on macOS arm64), but nobody has confirmed who publishes it or that it is the project meant |
-| [torch](https://pytorch.org) | 2.15.0 | Apache-2.0 AND Apache-2.0 WITH LLVM-exception AND BSD-2-Clause AND BSD-3-Clause AND BSL-1.0 AND ISC AND MIT AND Zlib | **Unverified**: metadata only |
+| [mlx-vlm](https://pypi.org/project/mlx-vlm/) | 0.7.12 | MIT | **Unverified**: metadata only. PyPI `project_urls` give `Repository: https://github.com/Neywa-Labs/mlx-vlm` and `Homepage: https://www.neywalabs.ai`. It is locked and runs in production code paths (Docling's `vlm` extra pulls it in on macOS arm64, and the `mlx` backend imports it), but **nobody has confirmed who publishes it or that it is the project meant. This check is still open** |
+| [torch](https://pytorch.org) | 2.15.0 | Apache-2.0 AND Apache-2.0 WITH LLVM-exception AND BSD-2-Clause AND BSD-3-Clause AND BSL-1.0 AND ISC AND MIT AND Zlib | **Unverified**: metadata only. On Linux the lock also pulls `nvidia-*` CUDA packages, `cuda-toolkit` and `triton` (see [architecture](explanation/architecture.md#open-issues)); their licences are not recorded here |
 | [transformers](https://github.com/huggingface/transformers) | 5.22.2 | Apache-2.0 | **Unverified**: metadata only |
-| [python-multipart](https://github.com/Kludex/python-multipart) | 0.0.33 | Apache-2.0 | Metadata only; FastAPI needs it to read an upload |
+| [python-multipart](https://github.com/Kludex/python-multipart) | 0.0.33 | Apache-2.0 | Metadata only; a runtime dependency, FastAPI needs it to read an upload |
 | huggingface-hub (Docling's environment) | 1.33.0 | Apache-2.0 | Metadata only |
+
+The locked versions above were read from `uv.lock` on 2026-11-08; the licence column still comes from
+the earlier metadata comparison and was not repeated for them.
 
 ### The downloader
 
@@ -64,10 +67,15 @@ project's `requires-python`. `docling` itself is a thin package: the code lives 
 - their licences are not recorded here.
 
 Dependabot does not bump the pin either (it sits in `scripts/download_models.sh`). The gap is
-open: the downloader is not under the lock yet, and Stage 1 does not close it. Decide whether to
+open: the downloader is not under the lock yet, and Stage 1 did not close it. Decide whether to
 bring it under the lock or to accept the gap (see [Open checks](#open-checks)).
 
 ## What was run
+
+Stage 1: the real adapter with the pinned `mlx` model on an Apple M1 Pro, through `make test-models`:
+a PDF with a text layer, a PDF scan and a PNG, each of one synthetic page (`tests/data/`), came back
+as text with the page count, and an offline run with every network call blocked and recorded made no
+attempt. The measured page time is in the README. The `transformers` model was not downloaded or run.
 
 Stage 0 launch test, in a scratch environment outside the repository: Python 3.15.2 on an Apple
 Silicon Mac, `docling[vlm]` 2.149.0, the pinned `mlx` model from a local folder with
@@ -82,7 +90,8 @@ Nobody has done these yet; they are for a person, not a script:
 
 - Read both model cards (not only the front matter) and the Apache-2.0 text for the pinned
   revisions, and confirm no use restriction applies to this service.
-- Confirm the publisher of `mlx-vlm` (see its row); it is already in `uv.lock`.
+- Confirm the publisher of `mlx-vlm` (see its row); it is in `uv.lock` and the `mlx` backend runs
+  it. **This stays open until a person has done it.**
 - Decide whether the downloader's environment stays outside `uv.lock` (see
   [The downloader](#the-downloader)).
 - Read the licence of every package marked **Unverified**, and of the transitive dependencies

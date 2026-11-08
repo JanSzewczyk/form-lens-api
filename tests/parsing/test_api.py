@@ -342,7 +342,7 @@ class TestLogs:
         assert self.MARKER not in everything
         assert "patient" not in everything
 
-    def test_a_failed_parse_logs_the_cause_type_and_not_its_text(
+    def test_a_failed_parse_logs_one_error_and_the_cause_type_but_not_its_text(
         self, app: FastAPI, client: TestClient, capsys: pytest.CaptureFixture[str]
     ) -> None:
         failure = ParseFailed()
@@ -352,6 +352,9 @@ class TestLogs:
         post_file(client, sample("sample.png"), name=f"{self.MARKER}.png")
 
         events = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith("{")]
-        failed = [e for e in events if e["event"] == "document_parse_failed"]
-        assert [e["cause_type"] for e in failed] == ["RuntimeError"]
+        parsed = [e for e in events if e["event"] == "document_parsed"]
+        errors = [e for e in events if e["event"] == "request_failed"]
+        assert [(e["status"], e["cause_type"], e["level"]) for e in parsed] == [("failed", "RuntimeError", "info")]
+        assert len(errors) == 1  # the failure is logged as an error once, by the handler that answers it
+        assert errors[0]["request_id"] == parsed[0]["request_id"]
         assert self.MARKER not in json.dumps(events)

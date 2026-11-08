@@ -124,7 +124,7 @@ def test_one_event_says_how_big_the_file_was_and_how_long_the_model_took() -> No
     ]
 
 
-def test_a_failed_parse_is_logged_with_the_type_of_its_cause_and_never_its_text() -> None:
+def test_a_failed_parse_ends_the_one_document_event_with_the_type_of_its_cause_and_never_its_text() -> None:
     failure = ParseFailed()
     failure.__cause__ = RuntimeError("secret-marker-4417")
 
@@ -132,6 +132,6 @@ def test_a_failed_parse_is_logged_with_the_type_of_its_cause_and_never_its_text(
         make_service(FakeParser(error=failure)).parse(sample("sample.png"), OutputFormat.MARKDOWN)
 
     [event] = events
-    assert event["event"] == "document_parse_failed"
-    assert (event["status"], event["cause_type"]) == ("failed", "RuntimeError")
+    assert event["event"] == "document_parsed"
+    assert (event["status"], event["cause_type"], event["log_level"]) == ("failed", "RuntimeError", "info")
     assert "secret-marker-4417" not in str(event)

@@ -40,10 +40,12 @@ class DocumentService:
             with self._slots.hold():
                 result = self._parser.parse(content, f"upload.{kind.extension}")
         except ParseFailed as exc:
+            # The same event as a success, so a document has one line. The error is logged once, by the
+            # handler that answers 500; this line joins it by request id. No traceback: a library error
+            # can quote the document it failed on.
             cause = exc.__cause__
-            # No traceback: a library error can quote the document it failed on.
-            log.error(  # noqa: TRY400
-                "document_parse_failed",
+            log.info(
+                "document_parsed",
                 file_size_bytes=len(content),
                 status="failed",
                 cause_type=type(cause).__name__ if cause is not None else None,

@@ -114,6 +114,14 @@ without a model. The model is loaded from `MODELS_PATH` only, never fetched at r
 
 Nothing here is implemented. Do each item when the module that needs it exists.
 
+- **Known gap: two sources of defaults.** `scripts/download_models.sh` repeats in bash the defaults
+  and the validation that `Settings` holds (`VLM_BACKEND`, `MODELS_PATH`), and it never reads
+  `.env`. A `.env` with `VLM_BACKEND=transformers` or `MODELS_PATH=/elsewhere` moves the service
+  but not `make download-models`, and `make test-models` builds `Settings(_env_file=None)`, so it
+  ignores `.env` too. Today only a test keeps the script and `Settings` in agreement
+  (`tests/test_download_models.py`). Give both one source, for example by having the script ask
+  `Settings` for the values, and drop the copy.
+
 - Pin the `docling`, `transformers`, `huggingface_hub` and `PIL` loggers to `WARNING` in
   `configure_logging`, so a dependency cannot flood the log or print a document's text at `DEBUG`.
 - Extend `SENSITIVE_PARTS` in the redaction processor with the field names that will carry document

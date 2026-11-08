@@ -448,8 +448,6 @@ breaking change bumps the minor). Other types release nothing. A release updates
 release to `CHANGELOG.md` and creates the GitHub Release with generated notes. Preview the next
 version locally with `uv run --group release semantic-release --noop version --print`.
 
-The "Create release" step in `release.yml` is still commented out in this repository, so no release
-is cut yet; uncomment it when the first version should be tagged.
 
 If `main` is protected, the workflow's token must be allowed to push to it (a ruleset bypass).
 

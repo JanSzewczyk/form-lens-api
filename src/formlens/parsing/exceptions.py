@@ -49,6 +49,9 @@ class ParserBusy(Exception):
 class ModelUnavailable(Exception):
     """The document model is not loaded, so no document can be parsed."""
 
-    def __init__(self) -> None:
-        """Say only that the model is not ready."""
-        super().__init__("The document model is not available.")
+    def __init__(self, reason: str = "The document model is not available.") -> None:
+        """Say only that the model is not ready; a startup failure may say which files are missing.
+
+        A request never carries a custom reason: it reaches the log of the failed startup, not a client.
+        """
+        super().__init__(reason)

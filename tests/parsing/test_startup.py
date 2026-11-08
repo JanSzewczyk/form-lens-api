@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -67,14 +68,15 @@ def test_a_factory_that_fails_stops_the_startup_and_logs_once_with_a_hint(
     assert failed["level"] == "error"
 
 
-def test_an_app_built_without_a_factory_starts_and_answers_503_until_a_model_is_given() -> None:
-    app = create_app(make_settings())
+def test_the_default_factory_refuses_an_empty_models_folder_before_it_imports_docling(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    app = create_app(make_settings(models_path=tmp_path, vlm_backend="transformers"))
 
-    with TestClient(app) as client:
-        ready = client.get("/health/ready")
-        parse = client.post("/v1/documents/parse", files={"file": ("a.png", sample("sample.png"), "image/png")})
+    with pytest.raises(ModelUnavailable, match=r"missing config\.json"), TestClient(app):
+        pass
 
-    assert ready.status_code == 503
-    assert ready.json()["detail"] == "Not ready: model"
-    assert parse.status_code == 503
-    assert parse.json()["type"] == "urn:problem:formlens:model-unavailable"
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith("{")]
+    [failed] = [e for e in events if e["event"] == "model_load_failed"]
+    assert failed["models_path"] == str(tmp_path)
+    assert "ibm-granite/granite-docling-258M" in failed["reason"]

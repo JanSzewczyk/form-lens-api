@@ -19,6 +19,7 @@ from formlens.middleware import (
 )
 from formlens.openapi import HEALTH_TAG, METADATA, install_openapi
 from formlens.parsing.body_limit import BodyLimitMiddleware
+from formlens.parsing.docling_parser import build_docling_parser
 from formlens.parsing.errors import ERRORS as PARSING_ERRORS
 from formlens.parsing.exceptions import ModelUnavailable
 from formlens.parsing.ports import ParserFactory
@@ -42,30 +43,30 @@ def create_app(settings: Settings | None = None, *, parser_factory: ParserFactor
 
     Args:
         settings: Optional settings override, used by tests.
-        parser_factory: Builds the document parser at startup. Tests pass a fake; without one the
-            app starts with no parser and answers 503 `model-unavailable`.
+        parser_factory: Builds the document parser at startup, in a worker thread. The default loads
+            the Docling model; tests pass a fake.
 
     Returns:
         The configured application.
     """
     settings = settings or Settings()
     configure_logging(settings)
+    factory = parser_factory or build_docling_parser
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
-        if parser_factory is not None:
-            try:
-                application.state.parser = await run_in_threadpool(parser_factory, settings)
-            except Exception as exc:
-                # Once, here; uvicorn prints the traceback when the startup fails, so none is logged.
-                log.error(  # noqa: TRY400
-                    "model_load_failed",
-                    backend=settings.vlm_backend,
-                    models_path=str(settings.models_path),
-                    reason=str(exc),
-                    hint="run `make download-models`, then start the service again",
-                )
-                raise
+        try:
+            application.state.parser = await run_in_threadpool(factory, settings)
+        except Exception as exc:
+            # Once, here; uvicorn prints the traceback when the startup fails, so none is logged.
+            log.error(  # noqa: TRY400
+                "model_load_failed",
+                backend=settings.vlm_backend,
+                models_path=str(settings.models_path),
+                reason=str(exc),
+                hint="run `make download-models`, then start the service again",
+            )
+            raise
         yield
         application.state.parser = None
 

@@ -221,7 +221,7 @@ curl http://127.0.0.1:8000/health
 | `make typecheck` | mypy, strict |
 | `make imports` | import-linter contracts (module boundaries) |
 | `make test` | pytest, without the `slow` tests that need the downloaded models |
-| `make test-models` | The `slow` tests: fail unless the pinned model files are under `MODELS_PATH` (run `make download-models` first) |
+| `make test-models` | Every `slow` test (`pytest -m slow`): the model files, the real model through the app and the offline check. They fail, not skip, unless the pinned model files are under `MODELS_PATH` (run `make download-models` first) |
 | `make download-models` | Download the pinned Granite-Docling model for `VLM_BACKEND` into `MODELS_PATH` (needs network, uv and about 0.6 GB) |
 | `make check` | What CI runs: format check, lint, mypy, import contracts, tests with coverage, OpenAPI drift |
 | `make openapi` | Regenerate `openapi.json` from the app (never edit it by hand) |
@@ -344,8 +344,12 @@ make test
   order. Every test has a 60 s timeout.
 - `make check` runs the suite under coverage with branches and fails below 95%.
 - Tests marked `slow` need the downloaded model and are deselected by default. `make test-models`
-  runs them and **fails**, not skips, when the pinned files are missing. A test of a real
-  conversion arrives in Stage 1.
+  runs them all (`pytest -m slow`) and **fails**, not skips, when the pinned files are missing. They
+  read only `MODELS_PATH` and `VLM_BACKEND` from the environment and `.env`; every other setting is
+  removed from the environment for them, as for any test. They parse the synthetic documents of
+  `tests/data/` through the real model, and one of them runs the service in a child process with
+  every connect and name lookup blocked and recorded (`tests/offline_child.py`): it passes only when
+  the recorded list is empty.
 - `tests/test_download_models.py` runs the download script against a fake downloader, so it needs
   no network.
 

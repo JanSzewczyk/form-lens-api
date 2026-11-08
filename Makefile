@@ -28,10 +28,11 @@ imports:
 test:
 	uv run pytest
 
-# The tests marked `slow` need the downloaded models (make download-models); they fail, not skip,
-# when the files are missing. `make check` deselects them.
+# The tests marked `slow` need the downloaded models (make download-models): the model files check, the
+# real model through the app and the offline check. They fail, not skip, when the files are missing.
+# `make check` deselects them.
 test-models:
-	uv run pytest -m slow tests/test_models.py
+	uv run pytest -m slow
 
 # The one command CI runs: format, lint, types, import contracts, tests with coverage, spec drift.
 check:

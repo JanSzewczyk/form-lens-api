@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from formlens.config import ModelSettings
+from formlens.config import ModelSettings, Settings
 from formlens.modelspec import MODEL_SPECS, VlmBackend
 
 
@@ -43,11 +43,15 @@ THIS_FILE = "tests/test_models.py"
 
 
 def run_pytest(
-    *arguments: str, models_path: Path | None = None, backend: str = "mlx"
+    *arguments: str,
+    models_path: Path | None = None,
+    backend: str = "mlx",
+    extra_environment: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run pytest on this file in a child process, as `make test-models` does, against another models folder."""
     environment = {key: value for key, value in os.environ.items() if key not in {"MODELS_PATH", "VLM_BACKEND"}}
     environment["VLM_BACKEND"] = backend
+    environment.update(extra_environment or {})
     if models_path is not None:
         environment["MODELS_PATH"] = str(models_path)
     return subprocess.run(  # noqa: S603  # this interpreter, fixed arguments
@@ -90,7 +94,7 @@ def test_only_make_test_models_overrides_the_default_deselection_of_the_slow_tes
 
     assert "test-models" in recipes
     assert [name for name, recipe in recipes.items() if "-m slow" in recipe] == ["test-models"]
-    assert "pytest -m slow tests/test_models.py" in recipes["test-models"]
+    assert "uv run pytest -m slow\n" in recipes["test-models"]  # every slow test, in every file
 
 
 def test_make_test_models_fails_with_a_hint_when_the_models_are_absent(tmp_path: Path) -> None:
@@ -101,6 +105,36 @@ def test_make_test_models_fails_with_a_hint_when_the_models_are_absent(tmp_path:
     assert "make download-models" in result.stdout
     assert str(tmp_path / "absent") in result.stdout  # MODELS_PATH from the environment reached the test
     assert "1 failed" in result.stdout
+
+
+@pytest.mark.slow
+def test_a_slow_test_sees_no_exported_setting_except_the_two_model_settings() -> None:
+    """The canary of the next test: it runs only when a child run selects it."""
+    others = {name.upper() for name in Settings.model_fields} - {name.upper() for name in ModelSettings.model_fields}
+
+    assert {key for key in os.environ if key.upper() in others} == set()
+
+
+def test_the_slow_tests_lose_every_exported_setting_but_models_path_and_vlm_backend(tmp_path: Path) -> None:
+    """A shell that exports `DOCS_ENABLED` or `PORT` must not reach a test that loads the real model."""
+    canary = f"{THIS_FILE}::test_a_slow_test_sees_no_exported_setting_except_the_two_model_settings"
+    result = run_pytest(
+        "-m", "slow", canary, models_path=tmp_path, extra_environment={"DOCS_ENABLED": "true", "port": "1"}
+    )
+
+    assert result.returncode == 0, result.stdout
+    assert "1 passed" in result.stdout
+
+
+def test_every_slow_test_fails_and_none_is_skipped_when_the_models_are_absent(tmp_path: Path) -> None:
+    """`make test-models` runs `-m slow` over the whole suite: the real-model tests must not skip either."""
+    result = run_pytest("-m", "slow", "-q", models_path=tmp_path / "absent")
+
+    assert result.returncode == 1
+    assert "skipped" not in result.stdout
+    assert "failed" in result.stdout  # the model files test
+    assert "errors" in result.stdout  # the real-model tests, whose app cannot load the model
+    assert "make download-models" in result.stdout
 
 
 def test_the_slow_test_passes_when_the_pinned_files_are_in_place(

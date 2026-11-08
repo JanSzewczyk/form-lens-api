@@ -155,9 +155,9 @@ def test_the_settings_tests_pass_when_the_shell_exports_every_setting() -> None:
     """A developer who exports `DOCS_ENABLED=true` or `VLM_BACKEND=transformers` sees no failing test.
 
     Every test builds Settings with `_env_file=None`, which skips the file but not the shell. The autouse
-    fixture in `tests/conftest.py` deletes the settings from the environment, except for the `slow` tests:
-    `make test-models MODELS_PATH=/data/models` (README) needs the variables they read. The child run holds
-    the tests that read the defaults, so it fails when the fixture stops deleting a variable.
+    fixture in `tests/conftest.py` deletes the settings from the environment; the `slow` tests keep
+    `MODELS_PATH` and `VLM_BACKEND`: `make test-models MODELS_PATH=/data/models` (README) needs them.
+    The child run holds the tests that read the defaults, so it fails when the fixture stops deleting a variable.
     """
     environment = {**os.environ, **NON_DEFAULT_ENVIRONMENT}
     here = "tests/test_config.py"

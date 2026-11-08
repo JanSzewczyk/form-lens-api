@@ -400,7 +400,7 @@
                 }
               }
             },
-            "description": "Request validation failed (`validation-error`): `file` is missing or `format` is unknown."
+            "description": "Request validation failed (`validation-error`): `file` is missing, is sent more than once or is a plain field; `format` is unknown."
           },
           "500": {
             "content": {

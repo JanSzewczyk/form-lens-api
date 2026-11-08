@@ -1,5 +1,6 @@
 """OpenAPI metadata and the one post-processing step the generated document needs."""
 
+import threading
 from typing import Any, Final
 
 from fastapi import FastAPI
@@ -56,13 +57,18 @@ def install_openapi(app: FastAPI) -> None:
     adds its own validation schemas; the service never sends either, so they are removed.
     """
     original = app.openapi
+    # Every request reads this document (the repeated-query check), so on a cold app several worker
+    # threads would build it at once, and Pydantic's schema generation is not safe to run that way.
+    build_lock = threading.Lock()
 
     def openapi() -> dict[str, Any]:
         if app.openapi_schema is None:
-            schema = original()
-            _move_error_schemas_to_problem_media_type(schema)
-            for name in _SCHEMAS_TO_DROP:
-                schema.get("components", {}).get("schemas", {}).pop(name, None)
+            with build_lock:
+                if app.openapi_schema is None:
+                    schema = original()
+                    _move_error_schemas_to_problem_media_type(schema)
+                    for name in _SCHEMAS_TO_DROP:
+                        schema.get("components", {}).get("schemas", {}).pop(name, None)
         return app.openapi_schema or {}
 
     app.openapi = openapi  # type: ignore[method-assign]  # documented FastAPI extension point

@@ -3,6 +3,7 @@
 from typing import Annotated, cast
 
 from fastapi import Depends, File, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 
 from formlens.config import Settings, get_settings
 from formlens.parsing.exceptions import ModelUnavailable
@@ -10,6 +11,7 @@ from formlens.parsing.models import BYTES_PER_MB
 from formlens.parsing.ports import DocumentParser
 from formlens.parsing.service import DocumentService
 from formlens.parsing.slots import ParseSlots
+from formlens.query import REPEATED_PARAMETER
 
 
 def get_parser(request: Request) -> DocumentParser:
@@ -34,7 +36,8 @@ def get_document_service(
     return DocumentService(parser, slots, max_upload_mb=settings.max_upload_mb)
 
 
-def read_upload(
+async def read_upload(
+    request: Request,
     file: Annotated[
         UploadFile,
         File(
@@ -47,6 +50,20 @@ def read_upload(
 ) -> bytes:
     """Read the upload, at most one byte more than the limit, so the service can tell it is too large.
 
-    The client's file name is never read: it could name a person or a case.
+    Starlette keeps only the last of several `file` parts and drops the rest without a word, so the
+    request would mean something different from what its first part says. It is refused with 422, as
+    a repeated query parameter is. The client's file name is never read: it could name a person or a case.
     """
-    return file.file.read(settings.max_upload_mb * BYTES_PER_MB + 1)
+    form = await request.form()  # already parsed for `file`; Starlette caches it on the request
+    if len(form.getlist("file")) > 1:
+        raise RequestValidationError(
+            [
+                {
+                    "type": REPEATED_PARAMETER,
+                    "loc": ("body", "file"),
+                    "msg": "Send the file once.",
+                    "input": None,
+                }
+            ]
+        )
+    return await file.read(settings.max_upload_mb * BYTES_PER_MB + 1)

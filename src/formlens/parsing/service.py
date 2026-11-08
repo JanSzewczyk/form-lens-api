@@ -2,9 +2,16 @@
 
 import structlog
 
-from formlens.parsing.exceptions import FileTooLarge, InvalidFile, ParseFailed, UnsupportedMediaType
+from formlens.parsing.exceptions import (
+    FileTooLarge,
+    InvalidFile,
+    ModelUnavailable,
+    ParseFailed,
+    ParserBusy,
+    UnsupportedMediaType,
+)
 from formlens.parsing.models import BYTES_PER_MB, OutputFormat, ParsedDocument, detect_document_type
-from formlens.parsing.ports import DocumentParser
+from formlens.parsing.ports import DocumentParser, ParseResult
 from formlens.parsing.slots import ParseSlots
 
 log = structlog.get_logger(__name__)
@@ -38,19 +45,16 @@ class DocumentService:
             raise UnsupportedMediaType
         try:
             with self._slots.hold():
-                result = self._parser.parse(content, f"upload.{kind.extension}")
+                result = self._parse(content, kind.extension)
         except ParseFailed as exc:
-            # The same event as a success, so a document has one line. The error is logged once, by the
-            # handler that answers 500; this line joins it by request id. No traceback: a library error
-            # can quote the document it failed on.
-            cause = exc.__cause__
-            log.info(
-                "document_parsed",
-                file_size_bytes=len(content),
-                status="failed",
-                cause_type=type(cause).__name__ if cause is not None else None,
-            )
+            self._log_failure(len(content), exc.__cause__)
             raise
+        except InvalidFile, ModelUnavailable, ParserBusy:
+            raise
+        except Exception as exc:  # noqa: BLE001 - what a parser raises is unknown; the answer is ParseFailed
+            # A parser that breaks its contract: its error can quote the document, so only the type is kept.
+            self._log_failure(len(content), exc)
+            raise ParseFailed from None
         log.info(
             "document_parsed",
             file_size_bytes=len(content),
@@ -61,4 +65,25 @@ class DocumentService:
         text = result.text if output_format is OutputFormat.MARKDOWN else result.plain_text
         return ParsedDocument(
             text=text, page_count=result.page_count, elapsed_ms=result.elapsed_ms, model=result.model_id
+        )
+
+    def _parse(self, content: bytes, extension: str) -> ParseResult:
+        """Call the parser and refuse a result the response cannot carry, as a failure of the parser."""
+        result = self._parser.parse(content, f"upload.{extension}")
+        if result.page_count < 0 or result.elapsed_ms < 0:
+            msg = "negative page count or time"
+            raise ValueError(msg)
+        return result
+
+    @staticmethod
+    def _log_failure(size: int, cause: BaseException | None) -> None:
+        """End the one event of a document that failed; the error itself is logged once, by the handler.
+
+        No traceback and no message: a library error can quote the document it failed on.
+        """
+        log.info(
+            "document_parsed",
+            file_size_bytes=size,
+            status="failed",
+            cause_type=type(cause).__name__ if cause is not None else None,
         )

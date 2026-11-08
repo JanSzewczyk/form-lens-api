@@ -32,6 +32,15 @@ All notable changes to this project are recorded here. The format follows
 - `docs/licenses.md`: licences, pinned revisions and open checks for the models and libraries.
 - Architecture notes: the FormLens components, the decisions and the open issues.
 
+### Fixed
+
+- `POST /v1/documents/parse`: a PNG or JPEG that mentions `%PDF-` in its first kilobyte is typed as
+  the image it starts as; a `Content-Length` that only looks like a number is left to the server
+  instead of failing the request; two `file` parts are a 422 `repeated_parameter` instead of the last
+  one winning silently; a parser that raises something unexpected, or returns a negative page count or
+  time, is a 500 `parse-failed` and its error text never reaches a log.
+- The OpenAPI document is built once even when several first requests ask for it together.
+
 ### Changed
 
 - `torch` and `torchvision` are direct dependencies, and on Linux they come from PyTorch's CPU index

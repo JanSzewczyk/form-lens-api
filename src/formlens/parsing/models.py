@@ -48,10 +48,14 @@ _SIGNATURES: Final = (
 
 
 def detect_document_type(content: bytes) -> DocumentType | None:
-    """Tell the document type from its first bytes; the client's Content-Type and name are never used."""
-    if b"%PDF-" in content[:_PDF_WINDOW]:
-        return DocumentType.PDF
+    """Tell the document type from its first bytes; the client's Content-Type and name are never used.
+
+    An image signature at offset 0 decides first: a PNG or JPEG may carry `%PDF-` in a text chunk or
+    its metadata, and it is still an image. The PDF header may sit anywhere in the first 1024 bytes.
+    """
     for signature, kind in _SIGNATURES:
         if content.startswith(signature):
             return kind
+    if b"%PDF-" in content[:_PDF_WINDOW]:
+        return DocumentType.PDF
     return None

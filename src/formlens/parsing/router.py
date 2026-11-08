@@ -55,7 +55,10 @@ def _unavailable() -> dict[str, Any]:
         415: problem_response(UNSUPPORTED_MEDIA_TYPE),
         422: problem_response(
             VALIDATION_ERROR,
-            description="Request validation failed (`validation-error`): `file` is missing or `format` is unknown.",
+            description=(
+                "Request validation failed (`validation-error`): `file` is missing, is sent more than once "
+                "or is a plain field; `format` is unknown."
+            ),
         ),
         500: problem_response(PARSE_FAILED, description="The model failed or ran out of time (`parse-failed`)."),
         503: _unavailable(),

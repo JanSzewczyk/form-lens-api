@@ -41,7 +41,7 @@ class BodyLimitMiddleware:
             return
 
         declared = Headers(scope=scope).get("content-length")
-        if declared is not None and declared.isdigit() and int(declared) > self._cap:
+        if declared is not None and declared.isascii() and declared.isdigit() and int(declared) > self._cap:
             await self._refuse(scope, receive, send)
             return
 

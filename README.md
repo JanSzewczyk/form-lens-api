@@ -7,7 +7,7 @@
 [![FastAPI](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22fastapi%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=FastAPI&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
 
-**FastAPI service with typed settings, structured logs, Problem Details and a checked OpenAPI contract**
+**FastAPI service that extracts structured data from forms with a document model that runs locally**
 
 [Features](#-features) • [Run it](#run-it) • [API](#-api) • [Configuration](#-configuration) • [Deployment](#-deployment)
 
@@ -17,10 +17,12 @@
 
 ## 👋 Hello there!
 
-A FastAPI service by Szum-Tech with the parts every API needs already wired and tested: typed
-settings, structured logging, one error format (Problem Details), a generated and checked OpenAPI
-contract, Docker and CI. It runs on Python 3.15 with uv, Ruff, mypy (strict) and pytest, so work
-starts from a green `make check` instead of an empty folder.
+FormLens API by Szum-Tech turns forms into structured data with IBM's Granite-Docling model,
+which runs on your machine through [Docling](https://github.com/docling-project/docling); no
+document leaves it. **Stage 0 is the working but empty skeleton**: typed settings (including the
+model settings), structured logging, one error format (Problem Details), a generated and checked
+OpenAPI contract, a pinned model download, Docker and CI. There is no parsing endpoint yet; it
+arrives in Stage 1. It runs on Python 3.15 with uv, Ruff, mypy (strict) and pytest.
 
 ### ⚡ Quick Start
 
@@ -29,6 +31,7 @@ git clone https://github.com/JanSzewczyk/form-lens-api.git
 cd form-lens-api
 cp .env.example .env
 make install
+make download-models   # about 0.6 GB, once; not needed to start the service in Stage 0
 make run
 ```
 
@@ -55,11 +58,13 @@ The API listens on http://127.0.0.1:8000; `curl http://127.0.0.1:8000/health` an
 - [![structlog](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22structlog%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=structlog)](https://www.structlog.org/) — structured logging on top of the stdlib `logging`
 - [![Uvicorn](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22uvicorn%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Uvicorn)](https://www.uvicorn.org/) — the ASGI server, started by `python -m formlens`
 
+- **Docling with Granite-Docling** — the document model; planned for Stage 1 and **not a dependency yet**. Its licences are in [docs/licenses.md](docs/licenses.md)
+
 ### 🧪 Quality Gates
 
 - [![Ruff](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22ruff%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Ruff&logo=ruff&logoColor=white)](https://docs.astral.sh/ruff/) — format and lint, with security, async, logging and docstring rules
 - [![mypy](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22mypy%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=mypy)](https://mypy.readthedocs.io/) — `strict = true` with the Pydantic plugin and extra error codes, over `src`, `tests` and `scripts`
-- [![import-linter](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22import-linter%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=import-linter)](https://import-linter.readthedocs.io/) — contracts: the core is layered, only the entry point imports uvicorn, the core never imports the example
+- [![import-linter](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22import-linter%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=import-linter)](https://import-linter.readthedocs.io/) — contracts: the core is layered, only the entry point imports uvicorn, the core is layered and only the entry point imports uvicorn
 - [![pytest](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22pytest%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=pytest&logo=pytest&logoColor=white)](https://docs.pytest.org/) — strict mode, warnings are errors, random order, 60 s timeout per test
 - [![coverage](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22coverage%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=coverage)](https://coverage.readthedocs.io/) — branch coverage of `src` and `scripts`, at least 95%
 - [![Hypothesis](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22hypothesis%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Hypothesis)](https://hypothesis.readthedocs.io/) — property-based tests
@@ -111,6 +116,7 @@ The API listens on http://127.0.0.1:8000; `curl http://127.0.0.1:8000/health` an
 ### 📋 Prerequisites
 
 - **[Python](https://www.python.org/downloads/)** 3.15 — uv installs it for you when it is missing
+- **macOS 14 or newer on Apple Silicon** for the default `VLM_BACKEND=mlx` (MLX runs on Apple Silicon only). On other systems set `VLM_BACKEND=transformers`; that backend has been neither downloaded nor run so far
 - **[uv](https://docs.astral.sh/uv/)** 0.13.7 or newer, for dependencies and virtual environments
 - **GNU Make** to run the commands below
 - **Git** for version control
@@ -140,7 +146,20 @@ This creates `.venv/` and installs the exact versions from `uv.lock` (`uv sync -
 cp .env.example .env
 ```
 
-#### 4. Start the Service
+#### 4. Download the Model
+
+```bash
+make download-models
+```
+
+This fetches the model pinned for `VLM_BACKEND` (about 0.6 GB for `mlx`) into `MODELS_PATH`
+(`models/` by default, git-ignored) as `models/ibm-granite--granite-docling-258M-mlx/`. It needs
+network access and uv, and does nothing when the pinned revision is already there. Pass the backend
+or folder on the command line (`make download-models VLM_BACKEND=transformers`); the script does not
+read `.env`. A relative `MODELS_PATH` is read from the repository root. `make test-models` then
+checks that the files are in place. Licences: [docs/licenses.md](docs/licenses.md).
+
+#### 5. Start the Service
 
 ```bash
 make run
@@ -157,7 +176,7 @@ its own access log. If you must use the CLI, pass `--factory`
 (`uvicorn formlens.main:create_app --factory`); you then get uvicorn's default log format
 next to ours.
 
-#### 5. Check It Works
+#### 6. Check It Works
 
 ```bash
 curl http://127.0.0.1:8000/health
@@ -298,6 +317,24 @@ make test
 - The order is random (pytest-randomly); `uv run pytest -p no:randomly` replays a run in file
   order. Every test has a 60 s timeout.
 - `make check` runs the suite under coverage with branches and fails below 95%.
+- Tests marked `slow` need the downloaded model and are deselected by default. `make test-models`
+  runs them and **fails**, not skips, when the pinned files are missing. A test of a real
+  conversion arrives in Stage 1.
+- `tests/test_download_models.py` runs the download script against a fake downloader, so it needs
+  no network.
+
+### Manual offline check
+
+Nobody has automated this yet. After `make download-models`, turn the network off (Wi-Fi off or
+cable out), then:
+
+```bash
+make run                         # in one terminal
+curl http://127.0.0.1:8000/health   # in another: {"status": "ok"}
+```
+
+The service must start and answer without network access. Stage 0 never loads the model, so this
+only proves that nothing at start-up needs the network; repeat it with a real conversion in Stage 1.
 - `make schemathesis` starts the service and runs Schemathesis with every check and phase against
   `openapi.json`.
 
@@ -318,8 +355,14 @@ All settings come from the environment or `.env` (see `.env.example`):
 | `HOST`, `PORT`, `RELOAD` | `127.0.0.1`, `8000`, `false` | Server binding |
 | `GRACEFUL_SHUTDOWN_SECONDS` | `20` | Time open requests get after SIGTERM; keep it below the orchestrator's grace period |
 | `DEFAULT_PAGE_SIZE` | `20` | Page size when `limit` is omitted |
+| `MODELS_PATH` | `./models` | Folder with the downloaded models; a relative path is read from the working directory |
+| `VLM_BACKEND` | `mlx` | `mlx` (Apple Silicon) or `transformers` |
+| `MAX_UPLOAD_MB` | `25` | Largest accepted upload, in megabytes (1 or more) |
+| `MAX_CONCURRENCY` | `1` | Documents converted at the same time (1 or more) |
 
 Every key is optional. An invalid value stops the service at start-up instead of failing later.
+`MODELS_PATH`, `VLM_BACKEND`, `MAX_UPLOAD_MB` and `MAX_CONCURRENCY` are read and validated in
+Stage 0 but nothing uses them until Stage 1.
 
 ---
 
@@ -390,8 +433,9 @@ src/formlens/
   pagination.py      Page[T] envelope and limit/offset parameters
   health/            GET /health (liveness), GET /health/ready (readiness, 503 problem)
 tests/               mirrors src
-scripts/             export_openapi.py, run_schemathesis.sh
-docs/                how-to guides, reference, explanation
+scripts/             export_openapi.py, run_schemathesis.sh, download_models.sh
+docs/                how-to guides, reference, explanation, licences
+models/              downloaded models (git-ignored)
 ```
 
 ### 📂 Key Directories
@@ -420,6 +464,7 @@ docs/                how-to guides, reference, explanation
   - [Add a module](docs/how-to/add-a-module.md)
 - **Reference** — [Problem types](docs/reference/problem-types.md)
 - **Explanation** — [Architecture](docs/explanation/architecture.md)
+- **Licences** — [Models and libraries](docs/licenses.md)
 
 ---
 
@@ -431,6 +476,8 @@ docs/                how-to guides, reference, explanation
 - **`make openapi-check` fails** — the API changed; run `make openapi` and commit `openapi.json`
 - **`make schemathesis` says the port is in use** — set `SCHEMATHESIS_PORT` to a free port
 - **`make api-breaking` skips the check** — `origin/main` has no `openapi.json` yet
+- **`make test-models` fails** — the pinned model is not in `MODELS_PATH`; run `make download-models` (with the same `VLM_BACKEND` and `MODELS_PATH`)
+- **`make download-models` says uvx is missing** — install [uv](https://docs.astral.sh/uv/), or set `HF_CLI` to another Hugging Face downloader
 - **Compose rejects `env_file`** — `required: false` needs Docker Compose 2.24 or newer
 - **The container ignores `ENVIRONMENT`, `HOST` or `PORT` from `.env`** — `make docker-run` and `compose.yaml` force them on purpose
 

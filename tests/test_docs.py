@@ -5,6 +5,8 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
+from tests.model_pins import MODEL_PINS
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -40,3 +42,14 @@ def test_readme_lists_every_make_target() -> None:
     assert targets
     for target in targets:
         assert f"make {target}" in readme, target
+
+
+def test_licenses_and_download_script_state_the_pinned_models() -> None:
+    licenses = (ROOT / "docs" / "licenses.md").read_text(encoding="utf-8")
+    script = (ROOT / "scripts" / "download_models.sh").read_text(encoding="utf-8")
+
+    for backend, pin in MODEL_PINS.items():
+        assert f'REPO="{pin.repo}"' in script, backend
+        assert f'REVISION="{pin.revision}"' in script, backend
+        assert f"| `{backend}` | [{pin.repo}]" in licenses, backend
+        assert f"`{pin.revision}`" in licenses, backend

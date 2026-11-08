@@ -1,15 +1,11 @@
 """The parsing use case: refuse what cannot be parsed, hold a slot, call the parser."""
 
-from typing import Final
-
 import structlog
 
 from formlens.parsing.exceptions import FileTooLarge, InvalidFile, ParseFailed, UnsupportedMediaType
-from formlens.parsing.models import OutputFormat, ParsedDocument, detect_document_type
+from formlens.parsing.models import BYTES_PER_MB, OutputFormat, ParsedDocument, detect_document_type
 from formlens.parsing.ports import DocumentParser
 from formlens.parsing.slots import ParseSlots
-
-BYTES_PER_MB: Final = 1024 * 1024
 
 log = structlog.get_logger(__name__)
 

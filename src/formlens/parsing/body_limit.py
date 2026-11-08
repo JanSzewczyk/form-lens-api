@@ -8,7 +8,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from formlens.parsing.errors import FILE_TOO_LARGE
 from formlens.parsing.exceptions import FileTooLarge
-from formlens.parsing.service import BYTES_PER_MB
+from formlens.parsing.models import BYTES_PER_MB
 from formlens.problems import domain_error_handler
 
 # The multipart framing around the file (boundaries, part headers) is not part of the file. The body

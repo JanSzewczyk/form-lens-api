@@ -2,9 +2,9 @@ import pytest
 from structlog.testing import capture_logs
 
 from formlens.parsing.exceptions import FileTooLarge, InvalidFile, ParseFailed, ParserBusy, UnsupportedMediaType
-from formlens.parsing.models import OutputFormat
+from formlens.parsing.models import BYTES_PER_MB, OutputFormat
 from formlens.parsing.ports import ParseResult
-from formlens.parsing.service import BYTES_PER_MB, DocumentService
+from formlens.parsing.service import DocumentService
 from formlens.parsing.slots import ParseSlots
 from tests.documents import png_of_size, sample
 from tests.fakes import FakeParser

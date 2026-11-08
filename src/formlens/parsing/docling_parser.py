@@ -15,8 +15,8 @@ import structlog
 from formlens.config import Settings
 from formlens.modelspec import MODEL_SPECS
 from formlens.parsing.exceptions import InvalidFile, ModelUnavailable, ParseFailed
+from formlens.parsing.models import BYTES_PER_MB
 from formlens.parsing.ports import ParseResult
-from formlens.parsing.service import BYTES_PER_MB
 
 _SUCCESS: Final = "success"  # `ConversionStatus.SUCCESS`, a `str` enum; compared by value so no import is needed
 _FALLBACK_NAME: Final = "upload"

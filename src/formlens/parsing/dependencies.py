@@ -6,8 +6,9 @@ from fastapi import Depends, File, Request, UploadFile
 
 from formlens.config import Settings, get_settings
 from formlens.parsing.exceptions import ModelUnavailable
+from formlens.parsing.models import BYTES_PER_MB
 from formlens.parsing.ports import DocumentParser
-from formlens.parsing.service import BYTES_PER_MB, DocumentService
+from formlens.parsing.service import DocumentService
 from formlens.parsing.slots import ParseSlots
 
 

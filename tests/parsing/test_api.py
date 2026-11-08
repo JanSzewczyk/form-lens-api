@@ -12,8 +12,8 @@ from httpx2 import Response
 from formlens.config import Settings
 from formlens.main import create_app
 from formlens.parsing.exceptions import InvalidFile, ParseFailed
+from formlens.parsing.models import BYTES_PER_MB
 from formlens.parsing.ports import ParseResult
-from formlens.parsing.service import BYTES_PER_MB
 from tests.conftest import make_settings
 from tests.documents import MULTIPART, multipart_body, multipart_chunks, png_of_size, sample
 from tests.fakes import FakeParser

@@ -36,6 +36,8 @@ class ParsedDocument:
     model: str
 
 
+BYTES_PER_MB: Final = 1024 * 1024
+
 _PDF_WINDOW: Final = 1024  # the PDF specification lets the header sit within the first 1024 bytes
 _SIGNATURES: Final = (
     (b"\x89PNG\r\n\x1a\n", DocumentType.PNG),

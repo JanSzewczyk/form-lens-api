@@ -9,7 +9,7 @@ import pytest
 from starlette.types import Message, Receive, Scope, Send
 
 from formlens.parsing.body_limit import SLACK_BYTES, BodyLimitMiddleware
-from formlens.parsing.service import BYTES_PER_MB
+from formlens.parsing.models import BYTES_PER_MB
 
 PATH = "/v1/documents/parse"
 CAP = BYTES_PER_MB + SLACK_BYTES

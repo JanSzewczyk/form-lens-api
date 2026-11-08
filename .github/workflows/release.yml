@@ -1,0 +1,48 @@
+name: Release 🚀
+
+# Every push to main: python-semantic-release reads the Conventional Commits since the last tag,
+# and when one of them is a feat, fix or perf (or a breaking change) it bumps the version in
+# pyproject.toml, refreshes uv.lock, pushes the release commit and the vX.Y.Z tag and creates the
+# GitHub Release. No such commit, no release.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  UV_VERSION: "0.13.7"
+
+jobs:
+  release:
+    name: Release 🚀
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # push the release commit and tag, create the GitHub Release
+    steps:
+      - name: Checkout code 📚
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0 # the tags and the commit history decide the next version
+      - name: Set up uv 🐍
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Install dependencies ⚙️
+        run: uv sync --locked --group release
+      # begin:template
+      #        HERE 👇👇👇
+      #        Expose block of code below when you use this template for a project
+      #        (scripts/init_project.py does it for you); the template cuts no releases of its own.
+      # end:template
+      - name: Create release 🚀  # uncomment:project
+        run: uv run semantic-release version  # uncomment:project
+        env:  # uncomment:project
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # uncomment:project

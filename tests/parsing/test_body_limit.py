@@ -198,3 +198,15 @@ def test_a_framework_that_keeps_reading_after_the_cut_hears_a_disconnect_again_a
     assert heard == ["http.request", "http.disconnect", "http.disconnect", "http.disconnect"]
     assert run.pulled == 2
     assert run.status == 413
+
+
+@pytest.mark.parametrize(
+    "length",
+    [b"\xb2", b"\xb3\xb9", b"1\xb2"],
+    ids=["superscript-two", "superscript-three-one", "digit-and-superscript"],
+)
+def test_a_content_length_that_only_looks_like_a_number_is_left_to_the_server(length: bytes) -> None:
+    """`str.isdigit` is true for "²" (a header byte is read as Latin-1), but `int()` cannot read it."""
+    run = drive(read_everything_and_answer_200, [b"x"], headers=[(b"content-length", length)])
+
+    assert run.status == 200

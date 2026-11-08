@@ -3,6 +3,7 @@
 import re
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI
 
 from tests.model_pins import MODEL_PINS
@@ -44,12 +45,13 @@ def test_readme_lists_every_make_target() -> None:
         assert f"make {target}" in readme, target
 
 
-def test_licenses_and_download_script_state_the_pinned_models() -> None:
+@pytest.mark.parametrize("backend", sorted(MODEL_PINS), ids=sorted(MODEL_PINS))
+def test_licenses_and_download_script_state_the_pinned_model(backend: str) -> None:
+    pin = MODEL_PINS[backend]
     licenses = (ROOT / "docs" / "licenses.md").read_text(encoding="utf-8")
     script = (ROOT / "scripts" / "download_models.sh").read_text(encoding="utf-8")
 
-    for backend, pin in MODEL_PINS.items():
-        assert f'REPO="{pin.repo}"' in script, backend
-        assert f'REVISION="{pin.revision}"' in script, backend
-        assert f"| `{backend}` | [{pin.repo}]" in licenses, backend
-        assert f"`{pin.revision}`" in licenses, backend
+    assert f'REPO="{pin.repo}"' in script
+    assert f'REVISION="{pin.revision}"' in script
+    assert f"| `{backend}` | [{pin.repo}]" in licenses
+    assert f"`{pin.revision}`" in licenses

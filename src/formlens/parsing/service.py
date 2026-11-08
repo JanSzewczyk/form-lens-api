@@ -47,7 +47,7 @@ class DocumentService:
             with self._slots.hold():
                 result = self._parse(content, kind.extension)
         except ParseFailed as exc:
-            self._log_failure(len(content), exc.__cause__)
+            self._log_failure(len(content), exc.__cause__, exc.conversion_status)
             raise
         except InvalidFile, ModelUnavailable, ParserBusy:
             raise
@@ -76,7 +76,7 @@ class DocumentService:
         return result
 
     @staticmethod
-    def _log_failure(size: int, cause: BaseException | None) -> None:
+    def _log_failure(size: int, cause: BaseException | None, conversion_status: str | None = None) -> None:
         """End the one event of a document that failed; the error itself is logged once, by the handler.
 
         No traceback and no message: a library error can quote the document it failed on.
@@ -86,4 +86,5 @@ class DocumentService:
             file_size_bytes=size,
             status="failed",
             cause_type=type(cause).__name__ if cause is not None else None,
+            conversion_status=conversion_status,
         )

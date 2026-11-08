@@ -1,6 +1,7 @@
 """The Docling adapter, driven by a stub converter: no Docling import and no model."""
 
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 
 import pytest
@@ -132,6 +133,7 @@ class TestParse:
             parser.parse(b"%PDF-", "upload.pdf")
 
         assert status in str(failed.value.__cause__)
+        assert failed.value.conversion_status == status
         assert result.document.exported == []  # a partial text is never exported
         assert list(tmp_path.iterdir()) == []
 
@@ -141,6 +143,25 @@ class TestParse:
 
         with pytest.raises(ParseFailed):
             parser.parse(b"%PDF-", "upload.pdf")
+
+    def test_an_enum_status_is_reported_by_its_value(self, tmp_path: Path) -> None:
+        class Status(Enum):
+            PARTIAL_SUCCESS = "partial_success"
+
+        parser = make_parser(StubConverter(StubResult(status=Status.PARTIAL_SUCCESS)), tmp_path)  # type: ignore[arg-type]
+
+        with pytest.raises(ParseFailed) as failed:
+            parser.parse(b"%PDF-", "upload.pdf")
+
+        assert failed.value.conversion_status == "partial_success"
+
+    def test_an_exception_has_no_conversion_status(self, tmp_path: Path) -> None:
+        parser = make_parser(StubConverter(error=ValueError("x")), tmp_path)
+
+        with pytest.raises(ParseFailed) as failed:
+            parser.parse(b"%PDF-", "upload.pdf")
+
+        assert failed.value.conversion_status is None
 
     def test_any_exception_of_docling_is_a_parse_failure_with_the_cause_kept_and_not_shown(
         self, tmp_path: Path

@@ -24,6 +24,14 @@ _FALLBACK_NAME: Final = "upload"
 log = structlog.get_logger(__name__)
 
 
+class _ConversionIncomplete(RuntimeError):
+    """Docling returned a result that is not a success; `status` is its status value."""
+
+    def __init__(self, status: str) -> None:
+        self.status = status
+        super().__init__(f"conversion ended with status {status}")
+
+
 class _Input(Protocol):
     @property
     def valid(self) -> bool: ...
@@ -84,6 +92,8 @@ class DoclingParser:
         started = time.perf_counter()
         try:
             texts = self._convert(content, filename)
+        except _ConversionIncomplete as exc:
+            raise ParseFailed(exc.status) from exc
         except Exception as exc:  # Docling raises whatever its backends raise; the cause goes to `__cause__`
             raise ParseFailed from exc
         if texts is None:
@@ -111,8 +121,7 @@ class DoclingParser:
             if not result.input.valid:
                 return None
             if result.status != _SUCCESS:
-                msg = f"conversion ended with status {result.status}"
-                raise RuntimeError(msg)
+                raise _ConversionIncomplete(str(getattr(result.status, "value", result.status)))
             document = result.document
             return document.export_to_markdown(), document.export_to_text(), result.input.page_count
 

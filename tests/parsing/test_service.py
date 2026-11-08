@@ -135,3 +135,21 @@ def test_a_failed_parse_ends_the_one_document_event_with_the_type_of_its_cause_a
     assert event["event"] == "document_parsed"
     assert (event["status"], event["cause_type"], event["log_level"]) == ("failed", "RuntimeError", "info")
     assert "secret-marker-4417" not in str(event)
+
+
+@pytest.mark.parametrize("status", ["failure", "partial_success"], ids=["failed-conversion", "timeout-or-partial"])
+def test_the_failure_event_names_the_status_the_conversion_ended_with(status: str) -> None:
+    """A timeout, a partial result and a failure all end as a `RuntimeError`; the status tells them apart."""
+    with capture_logs() as events, pytest.raises(ParseFailed):
+        make_service(FakeParser(error=ParseFailed(status))).parse(sample("sample.png"), OutputFormat.MARKDOWN)
+
+    [event] = events
+    assert event["conversion_status"] == status
+
+
+def test_a_failure_that_is_not_a_conversion_status_logs_none() -> None:
+    with capture_logs() as events, pytest.raises(ParseFailed):
+        make_service(FakeParser(error=RuntimeError("x"))).parse(sample("sample.png"), OutputFormat.MARKDOWN)
+
+    [event] = events
+    assert (event["cause_type"], event["conversion_status"]) == ("RuntimeError", None)

@@ -34,8 +34,14 @@ class UnsupportedMediaType(Exception):
 class ParseFailed(Exception):
     """The document model failed, timed out or returned an incomplete result."""
 
-    def __init__(self) -> None:
-        """Say nothing of the cause: it is in the server log, not in the answer."""
+    def __init__(self, conversion_status: str | None = None) -> None:
+        """Say nothing of the cause: it is in the server log, not in the answer.
+
+        `conversion_status` is Docling's status value (`failure`, `partial_success` for a timeout or an
+        incomplete result, ...) when the conversion ended without raising. It is an enum value and never
+        document content, so the log may carry it.
+        """
+        self.conversion_status = conversion_status
         super().__init__("The document could not be parsed.")
 
 

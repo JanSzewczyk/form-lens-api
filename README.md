@@ -79,6 +79,7 @@ The API listens on http://127.0.0.1:8000; `curl http://127.0.0.1:8000/health` an
 - [![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)](https://www.docker.com/) — multi-stage image, non-root user, `HEALTHCHECK`, and a `compose.yaml` that runs it read-only
 - [![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?logo=githubactions&logoColor=white)](https://docs.github.com/actions) — `make check`, the contract tooling, the image and a free-threaded run on every pull request
 - [![Dependabot](https://img.shields.io/badge/Dependabot-025E8C?logo=dependabot&logoColor=white)](https://docs.github.com/code-security/dependabot) — weekly updates for uv, Actions and Docker images, after a 7-day cooldown
+- **python-semantic-release** — versions, tags and GitHub Releases from Conventional Commits on `main`
 - **pip-audit** — every locked dependency group, on every pull request and weekly
 
 ### 🧭 Scope & Design Decisions
@@ -450,6 +451,23 @@ default). Behind a proxy, also set uvicorn's `FORWARDED_ALLOW_IPS`.
 Actions are pinned to exact version tags. `.github/dependabot.yml` proposes weekly updates for uv,
 GitHub Actions and the Docker images, grouping minor and patch releases.
 
+### 🏷️ Releases
+
+`.github/workflows/release.yml` runs python-semantic-release on every push to `main`. It reads the
+Conventional Commits since the last tag: `feat` bumps the minor version, `fix` and `perf` the patch
+version, and `!` or a `BREAKING CHANGE:` footer the major version (while the version is `0.x`, a
+breaking change bumps the minor). Other types release nothing. A release updates `version` in
+`pyproject.toml` and `uv.lock`, pushes a `chore(release): X.Y.Z` commit and the `vX.Y.Z` tag, adds the
+release to `CHANGELOG.md` and creates the GitHub Release with generated notes. Preview the next
+version locally with `uv run --group release semantic-release --noop version --print`.
+
+<!-- begin:template -->
+The release step is commented out in the template; `scripts/init_project.py` enables it in a copy.
+
+<!-- end:template -->
+
+If `main` is protected, the workflow's token must be allowed to push to it (a ruleset bypass).
+
 ---
 
 ## 📁 Project Structure
@@ -493,7 +511,7 @@ docs/                how-to guides, reference, explanation
 - **`openapi.json`** — the generated contract
 - **`.spectral.yaml`**, **`schemathesis.toml`** — rules for the contract tooling
 - **`Dockerfile`**, **`compose.yaml`**, **`.dockerignore`** — the image and how to run it
-- **`.github/workflows/ci.yml`**, **`.github/dependabot.yml`** — CI and dependency updates
+- **`.github/workflows/ci.yml`**, **`.github/workflows/release.yml`**, **`.github/dependabot.yml`** — CI, releases and dependency updates
 
 ---
 
@@ -523,8 +541,8 @@ docs/                how-to guides, reference, explanation
 
 ## 📝 Changelog
 
-Notable changes are recorded in [CHANGELOG.md](CHANGELOG.md), in the
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
+Releases and their changes are listed on the repository's GitHub Releases page. The first release
+also generates `CHANGELOG.md` from the Conventional Commits.
 
 ---
 

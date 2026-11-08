@@ -223,7 +223,7 @@ tag_format = "v{version}"
 commit_message = "chore(release): {version}"
 allow_zero_version = true
 major_on_zero = false
-build_command = "uv lock --upgrade-package fastapi-szumplate && git add uv.lock"
+build_command = "uv lock --upgrade-package form-lens-api && git add uv.lock"
 
 [tool.semantic_release.branches.main]
 match = "main"

@@ -22,6 +22,7 @@ from httpx2 import Response
 from formlens.health.readiness import register_readiness_check
 from formlens.main import create_app
 from tests.conftest import make_settings
+from tests.fakes import FakeParser
 from tests.probes import add_probe_routes
 
 PROBLEM = "application/problem+json"
@@ -312,7 +313,7 @@ def test_a_path_validation_error_names_the_parameter(probe: TestClient) -> None:
 
 def test_the_health_payloads_are_exactly_the_documented_ones(client: TestClient) -> None:
     assert client.get("/health").json() == {"status": "ok"}
-    assert client.get("/health/ready").json() == {"status": "ready", "checks": {}}
+    assert client.get("/health/ready").json() == {"status": "ready", "checks": {"model": "ok"}}
 
 
 def test_a_failed_readiness_check_does_not_leak_into_other_routes(probe_app: FastAPI, probe: TestClient) -> None:
@@ -361,7 +362,7 @@ class TestUnhandledError:
 class TestCors:
     @pytest.fixture
     def cors_app(self) -> FastAPI:
-        return add_probe_routes(create_app(make_settings(cors_origins=[ORIGIN])))
+        return add_probe_routes(create_app(make_settings(cors_origins=[ORIGIN]), parser_factory=lambda _: FakeParser()))
 
     @pytest.fixture
     def cors(self, cors_app: FastAPI) -> Iterator[TestClient]:

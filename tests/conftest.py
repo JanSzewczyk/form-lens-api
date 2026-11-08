@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from formlens.config import Settings
 from formlens.main import create_app
+from tests.fakes import FakeParser
 from tests.probes import add_probe_routes
 
 
@@ -43,7 +44,7 @@ def settings() -> Settings:
 @pytest.fixture
 def app(settings: Settings) -> Iterator[FastAPI]:
     """Application built from the test settings; dependency overrides are cleared afterwards."""
-    application = create_app(settings)
+    application = create_app(settings, parser_factory=lambda _: FakeParser())
     yield application
     application.dependency_overrides.clear()
 

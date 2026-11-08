@@ -114,7 +114,7 @@ def test_every_operation_has_a_summary_and_tag(spec: dict[str, Any]) -> None:
 def test_metadata_describes_the_api(spec: dict[str, Any]) -> None:
     info = spec["info"]
 
-    assert info["license"]["name"] == "MIT"
+    assert info["license"]["name"] == "Proprietary (all rights reserved)"
     assert info["contact"]["name"]
     assert info["description"]
     assert spec["servers"] == [{"url": "/", "description": "The host that serves this document"}]

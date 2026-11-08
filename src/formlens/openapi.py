@@ -8,7 +8,7 @@ from formlens import __version__
 from formlens.problems import PROBLEM_MEDIA_TYPE
 
 DESCRIPTION: Final = """\
-Production-ready FastAPI service.
+FormLens API: extracts structured data from forms with a document model that runs locally.
 
 Every error is returned as Problem Details (RFC 9457, `application/problem+json`). Branch on the
 `type` field, never on `detail`. Every response carries an `X-Request-ID` header; quote it when
@@ -18,8 +18,8 @@ you report a problem.
 METADATA: Final[dict[str, Any]] = {
     "version": __version__,
     "description": DESCRIPTION,
-    "contact": {"name": "Szum-Tech", "url": "https://github.com/JanSzewczyk/formlens"},
-    "license_info": {"name": "MIT", "identifier": "MIT"},
+    "contact": {"name": "Szum-Tech", "url": "https://github.com/JanSzewczyk/form-lens-api"},
+    "license_info": {"name": "Proprietary (all rights reserved)"},
     # Relative, so "Try it out" calls the host that serves the docs, wherever it runs.
     "servers": [{"url": "/", "description": "The host that serves this document"}],
 }

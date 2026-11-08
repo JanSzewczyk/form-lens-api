@@ -1,9 +1,9 @@
 [project]
 name = "formlens"
 version = "0.1.0"
-description = "Production-ready FastAPI service with uv, Ruff, mypy strict and pytest"
+description = "FormLens API: extracts structured data from forms with a locally running document model"
 readme = "README.md"
-license = "MIT"
+license = "LicenseRef-Proprietary"
 license-files = ["LICENSE"]
 # A deployable service: the classifier makes PyPI refuse an accidental upload.
 classifiers = ["Private :: Do Not Upload"]

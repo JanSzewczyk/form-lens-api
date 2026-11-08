@@ -187,12 +187,11 @@
   "info": {
     "contact": {
       "name": "Szum-Tech",
-      "url": "https://github.com/JanSzewczyk/formlens"
+      "url": "https://github.com/JanSzewczyk/form-lens-api"
     },
-    "description": "Production-ready FastAPI service.\n\nEvery error is returned as Problem Details (RFC 9457, `application/problem+json`). Branch on the\n`type` field, never on `detail`. Every response carries an `X-Request-ID` header; quote it when\nyou report a problem.\n",
+    "description": "FormLens API: extracts structured data from forms with a document model that runs locally.\n\nEvery error is returned as Problem Details (RFC 9457, `application/problem+json`). Branch on the\n`type` field, never on `detail`. Every response carries an `X-Request-ID` header; quote it when\nyou report a problem.\n",
     "license": {
-      "identifier": "MIT",
-      "name": "MIT"
+      "name": "Proprietary (all rights reserved)"
     },
     "title": "formlens",
     "version": "0.1.0"

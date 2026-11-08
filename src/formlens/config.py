@@ -63,7 +63,10 @@ class Settings(BaseSettings):
     )
     vlm_backend: VlmBackend = Field(
         default="mlx",
-        description="Inference backend of the document model: `mlx` (Apple Silicon) or `transformers`.",
+        description=(
+            "Inference backend of the document model: `mlx` (the backend this project uses on Apple Silicon) "
+            "or `transformers`."
+        ),
     )
     max_upload_mb: int = Field(default=25, ge=1, description="Largest accepted upload, in megabytes.")
     max_concurrency: int = Field(

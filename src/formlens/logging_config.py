@@ -45,6 +45,10 @@ _QUIET_LOGGERS: Final = (
     "mlx",
     "mlx_vlm",
 )
+# The multipart parser warns about framing it cannot read and quotes the offending body byte
+# ("Expected boundary character 45, got 137"). That byte is document content, so these loggers are held
+# at ERROR, higher than the rest.
+_BODY_LOGGERS: Final = ("python_multipart", "multipart")
 
 
 class _StdoutHandler(logging.StreamHandler[Any]):
@@ -162,3 +166,6 @@ def configure_logging(settings: Settings) -> None:
     quiet_level = max(logging.WARNING, logging.getLevelNamesMapping()[settings.log_level])
     for name in _QUIET_LOGGERS:
         logging.getLogger(name).setLevel(quiet_level)
+    body_level = max(logging.ERROR, logging.getLevelNamesMapping()[settings.log_level])
+    for name in _BODY_LOGGERS:
+        logging.getLogger(name).setLevel(body_level)

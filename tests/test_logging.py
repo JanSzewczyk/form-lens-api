@@ -158,7 +158,7 @@ QUIET_LOGGERS = ["docling", "docling_core", "docling_parse", "docling_ibm_models
 @pytest.fixture
 def restore_logger_levels() -> Iterator[None]:
     """`configure_logging` sets levels on global loggers; put them back so no other test sees them."""
-    names = [*QUIET_LOGGERS, "PIL", "mlx", "mlx_vlm", "unrelated"]
+    names = [*QUIET_LOGGERS, "PIL", "mlx", "mlx_vlm", "python_multipart", "multipart", "unrelated"]
     saved = {name: logging.getLogger(name).level for name in names}
     yield
     for name, level in saved.items():
@@ -420,3 +420,16 @@ def test_entry_point_starts_uvicorn_with_our_logging(monkeypatch: pytest.MonkeyP
     assert kwargs["access_log"] is False
     assert kwargs["server_header"] is False
     assert kwargs["timeout_graceful_shutdown"] == 20
+
+
+@pytest.mark.parametrize("name", ["python_multipart", "python_multipart.multipart", "multipart"])
+def test_the_multipart_parser_is_held_at_error_so_it_cannot_quote_a_body_byte(
+    restore_logger_levels: None, capsys: pytest.CaptureFixture[str], name: str
+) -> None:
+    configure_logging(make_settings(log_format="json", log_level="DEBUG"))
+
+    logging.getLogger(name).warning("Expected boundary character %r, got %r at index %d", 45, 137, 2)
+    logging.getLogger(name).error("kept")
+
+    [line] = lines(capsys)
+    assert line["event"] == "kept"

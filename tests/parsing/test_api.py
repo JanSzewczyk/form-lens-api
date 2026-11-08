@@ -749,3 +749,33 @@ class TestLogsAtDebug:
             "elapsed_ms",
             "status",
         }
+
+
+class TestMalformedMultipartLogs:
+    MARKER = "unique-marker-b6d4"
+
+    @pytest.fixture
+    def settings(self) -> Settings:
+        return make_settings(max_upload_mb=1, log_level="DEBUG")
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            pytest.param(b"--B\r\n\x89" + MARKER.encode() * 4, id="byte-where-the-boundary-ends"),
+            pytest.param(b"--BX" + MARKER.encode() + b"\r\n--B--\r\n", id="wrong-character-in-the-boundary"),
+            pytest.param(b"--B\r\nContent-Disp\x80sition: x\r\n\r\n" + MARKER.encode(), id="bad-header-byte"),
+        ],
+    )
+    def test_a_body_that_cannot_be_framed_leaks_none_of_its_bytes_to_a_log_line(
+        self, client: TestClient, capsys: pytest.CaptureFixture[str], caplog: pytest.LogCaptureFixture, body: bytes
+    ) -> None:
+        caplog.set_level("DEBUG")
+
+        response = client.post(URL, content=body, headers={"Content-Type": "multipart/form-data; boundary=B"})
+
+        captured = capsys.readouterr()
+        everything = captured.out + captured.err + caplog.text
+        assert response.status_code in {400, 422}
+        assert '"request_completed"' in everything
+        assert self.MARKER not in everything
+        assert not [r for r in caplog.records if r.name.startswith(("python_multipart", "multipart"))]

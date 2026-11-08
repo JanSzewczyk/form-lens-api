@@ -4,6 +4,7 @@ They fail, not skip, when the files are missing: the point is to say the machine
 """
 
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Callable
@@ -80,11 +81,11 @@ def test_the_default_run_does_not_collect_the_slow_test_so_check_needs_no_models
 
 def test_only_make_test_models_overrides_the_default_deselection_of_the_slow_tests() -> None:
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
-    check_recipe = makefile.split("\ncheck:\n", 1)[1].split("\n\n", 1)[0]
-    test_models_recipe = makefile.split("\ntest-models:\n", 1)[1].split("\n\n", 1)[0]
+    recipes = dict(re.findall(r"^([a-z][a-z-]*):[^\n]*\n((?:\t[^\n]*\n)+)", makefile, re.MULTILINE))
 
-    assert "-m slow" not in check_recipe
-    assert "pytest -m slow tests/test_models.py" in test_models_recipe
+    assert "test-models" in recipes
+    assert [name for name, recipe in recipes.items() if "-m slow" in recipe] == ["test-models"]
+    assert "pytest -m slow tests/test_models.py" in recipes["test-models"]
 
 
 def test_make_test_models_fails_with_a_hint_when_the_models_are_absent(tmp_path: Path) -> None:

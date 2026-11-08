@@ -35,7 +35,14 @@ def get_document_service(
 
 
 def read_upload(
-    file: Annotated[UploadFile, File(description="The document: a PDF, PNG, JPEG or TIFF file.")],
+    file: Annotated[
+        UploadFile,
+        File(
+            description="The document: a PDF, PNG, JPEG or TIFF file. An empty file is refused with 400.",
+            # Documents what the service enforces, so a generated "valid" request is never an empty file.
+            json_schema_extra={"minLength": 1},
+        ),
+    ],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> bytes:
     """Read the upload, at most one byte more than the limit, so the service can tell it is too large.

@@ -358,3 +358,15 @@ class TestLogs:
         assert len(errors) == 1  # the failure is logged as an error once, by the handler that answers it
         assert errors[0]["request_id"] == parsed[0]["request_id"]
         assert self.MARKER not in json.dumps(events)
+
+
+def test_the_spec_says_the_file_part_is_not_empty_and_the_service_refuses_an_empty_one(
+    app: FastAPI, client: TestClient
+) -> None:
+    """Schemathesis builds its valid requests from the spec: an empty file must not be one of them."""
+    file_schema = app.openapi()["components"]["schemas"]["Body_parse_document"]["properties"]["file"]
+
+    reply = post_file(client, b"")
+
+    assert file_schema["minLength"] == 1
+    assert reply.status_code == 400

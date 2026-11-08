@@ -5,7 +5,8 @@
         "properties": {
           "file": {
             "contentMediaType": "application/octet-stream",
-            "description": "The document: a PDF, PNG, JPEG or TIFF file.",
+            "description": "The document: a PDF, PNG, JPEG or TIFF file. An empty file is refused with 400.",
+            "minLength": 1,
             "title": "File",
             "type": "string"
           }

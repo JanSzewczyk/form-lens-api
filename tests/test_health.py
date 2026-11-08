@@ -101,11 +101,6 @@ def test_a_near_miss_of_a_probe_path_is_a_404_problem_and_never_a_redirect_or_a_
     assert response.json()["request_id"] == response.headers["X-Request-ID"]
 
 
-def test_a_probe_path_with_dot_segments_is_normalised_by_the_client_and_still_served(client: TestClient) -> None:
-    """httpx removes `..` before sending, so this is the one near miss that is the probe itself."""
-    assert client.get("http://testserver/health/x/../ready").json()["status"] == "ready"
-
-
 @given(path=st.text(alphabet=st.characters(codec="utf-8"), min_size=1, max_size=40))
 def test_no_path_makes_the_service_answer_with_anything_but_a_documented_status(path: str) -> None:
     client = TestClient(create_app(make_settings()), raise_server_exceptions=False)

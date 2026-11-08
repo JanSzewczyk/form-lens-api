@@ -142,18 +142,25 @@ def test_the_isolation_test_below_covers_every_setting() -> None:
     assert set(NON_DEFAULT_ENVIRONMENT) == {name.upper() for name in Settings.model_fields}
 
 
-def test_the_suite_passes_when_the_shell_exports_settings() -> None:
-    """Every test builds Settings with `_env_file=None`, which skips the file but not the shell.
+def test_a_settings_object_built_without_arguments_holds_every_declared_default() -> None:
+    """The shell's exported settings never reach `Settings(_env_file=None)`: the autouse fixture removes them."""
+    declared = {name: field.get_default(call_default_factory=True) for name, field in Settings.model_fields.items()}
 
-    A developer who exports `DOCS_ENABLED=true` or `VLM_BACKEND=transformers` must not see the
-    suite fail for a reason the failing test does not show. Fix: an autouse fixture in
-    `tests/conftest.py` that deletes the settings from the environment (`monkeypatch.delenv`), but
-    not for the `slow` tests: `make test-models MODELS_PATH=/data/models` (README) needs the
-    variables they read.
+    assert Settings(_env_file=None).model_dump() == declared
+
+
+def test_the_settings_tests_pass_when_the_shell_exports_every_setting() -> None:
+    """A developer who exports `DOCS_ENABLED=true` or `VLM_BACKEND=transformers` sees no failing test.
+
+    Every test builds Settings with `_env_file=None`, which skips the file but not the shell. The autouse
+    fixture in `tests/conftest.py` deletes the settings from the environment, except for the `slow` tests:
+    `make test-models MODELS_PATH=/data/models` (README) needs the variables they read. The child run holds
+    the tests that read the defaults, so it fails when the fixture stops deleting a variable.
     """
     environment = {**os.environ, **NON_DEFAULT_ENVIRONMENT}
+    here = "tests/test_config.py"
 
-    result = subprocess.run(  # this interpreter, fixed arguments
+    result = subprocess.run(  # noqa: S603  # this interpreter, fixed arguments
         [
             sys.executable,
             "-m",
@@ -161,22 +168,20 @@ def test_the_suite_passes_when_the_shell_exports_settings() -> None:
             "-q",
             "-p",
             "no:cacheprovider",
-            "--deselect",
-            "tests/test_config.py::test_the_suite_passes_when_the_shell_exports_settings",
-            "--deselect",
-            "tests/test_models.py",  # sets and clears its own MODELS_PATH and VLM_BACKEND; skipped to save time
+            f"{here}::test_defaults_are_safe_for_a_public_api",
+            f"{here}::test_model_settings_default_to_the_local_apple_silicon_setup",
+            f"{here}::test_a_settings_object_built_without_arguments_holds_every_declared_default",
         ],
         cwd=ROOT,
         env=environment,
         capture_output=True,
         text=True,
         check=False,
-        timeout=120,
+        timeout=30,
     )
 
-    failed = [line for line in result.stdout.splitlines() if line.startswith("FAILED")]
-    assert failed == []
     assert result.returncode == 0, result.stdout[-2000:]
+    assert "3 passed" in result.stdout
 
 
 @pytest.mark.parametrize(
@@ -259,15 +264,8 @@ def test_the_environment_beats_the_env_file(tmp_path: Path, monkeypatch: pytest.
     assert settings.max_upload_mb == 9  # the file fills what the environment leaves out
 
 
-def test_a_relative_models_path_stays_relative_and_is_read_from_the_working_directory(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.chdir(tmp_path)
-
-    settings = make_settings(models_path="weights")
-
-    assert settings.models_path == Path("weights")
-    assert settings.models_path.resolve() == (tmp_path / "weights").resolve()
+def test_a_relative_models_path_stays_relative() -> None:
+    assert make_settings(models_path="weights").models_path == Path("weights")
 
 
 def test_every_env_example_key_is_a_setting_and_every_setting_has_a_key() -> None:

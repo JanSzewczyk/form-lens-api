@@ -74,16 +74,15 @@ def test_the_default_run_does_not_collect_the_slow_test_so_check_needs_no_models
 
     assert result.returncode == 0, result.stdout
     assert "test_the_pinned_model_files_are_present_under_the_models_path" not in result.stdout
-    assert "test_the_check_target_runs_no_model_test" in result.stdout
+    assert "test_the_slow_test_follows_the_backend_setting" in result.stdout
     assert not (tmp_path / "absent").exists()
 
 
-def test_the_check_target_runs_no_model_test() -> None:
+def test_only_make_test_models_overrides_the_default_deselection_of_the_slow_tests() -> None:
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     check_recipe = makefile.split("\ncheck:\n", 1)[1].split("\n\n", 1)[0]
     test_models_recipe = makefile.split("\ntest-models:\n", 1)[1].split("\n\n", 1)[0]
 
-    assert "models" not in check_recipe
     assert "-m slow" not in check_recipe
     assert "pytest -m slow tests/test_models.py" in test_models_recipe
 

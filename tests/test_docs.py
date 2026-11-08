@@ -31,20 +31,6 @@ def test_every_problem_type_in_the_reference_is_registered(app: FastAPI) -> None
     assert documented == registered
 
 
-def test_readme_lists_every_make_target() -> None:
-    makefile = (ROOT / "Makefile").read_text(encoding="utf-8").replace("\\\n", " ")
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    targets = [
-        target
-        for line in re.findall(r"^\.PHONY:(.*)$", makefile, re.MULTILINE)
-        for target in line.split("#")[0].split()
-    ]
-
-    assert targets
-    for target in targets:
-        assert f"make {target}" in readme, target
-
-
 @pytest.mark.parametrize("backend", sorted(MODEL_PINS), ids=sorted(MODEL_PINS))
 def test_licenses_and_download_script_state_the_pinned_model(backend: str) -> None:
     pin = MODEL_PINS[backend]
@@ -58,7 +44,7 @@ def test_licenses_and_download_script_state_the_pinned_model(backend: str) -> No
 
 
 def test_readme_names_every_make_target_as_a_whole_word() -> None:
-    """`make test` is a prefix of `make test-models`, so the substring test above cannot tell them apart."""
+    """`make test` is a prefix of `make test-models`, so each target is matched as a whole word."""
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     targets = re.findall(r"^([a-z][a-z-]*):", makefile, re.MULTILINE)

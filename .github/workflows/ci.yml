@@ -86,6 +86,10 @@ jobs:
           test "$status" -ne 0 # it failed
           test "$status" -ne 124 # on its own, not by hanging until the timeout
           grep --quiet model_load_failed "$RUNNER_TEMP/start.log"
+      # The start-up check above stops at `missing_model_files`, before any Docling import, so it passes
+      # even if the image cannot import Docling or torch. This is the step that proves the image can.
+      - name: The image can import Docling and torch
+        run: docker run --rm formlens:local python -c "import docling.document_converter, torch"
       - run: docker compose config --quiet # compose.yaml is valid, with its defaults
 
   # Informational: the free-threaded build exposes races the GIL hides. Never blocks a merge.

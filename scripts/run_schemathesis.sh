@@ -16,7 +16,7 @@ fi
 LOG="$(mktemp -t schemathesis-server.XXXXXX)"
 
 HOST=127.0.0.1 PORT="$PORT" ENVIRONMENT=test LOG_FORMAT=json LOG_LEVEL=INFO \
-    uv run python -m fastapi_szumplate >"$LOG" 2>&1 &
+    uv run python -m formlens >"$LOG" 2>&1 &
 SERVER_PID=$!
 trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true; rm -f "$LOG"' EXIT
 

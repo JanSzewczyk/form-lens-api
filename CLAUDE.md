@@ -1,4 +1,4 @@
-# fastapi-szumplate
+# formlens
 
 FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
 
@@ -6,7 +6,7 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
 
 - `make check` is the gate: Ruff format check, Ruff lint, mypy, import contracts, tests with
   coverage, OpenAPI drift. Run it before every commit.
-- `make run` starts the service (`python -m fastapi_szumplate`). Tests use `uv run pytest`.
+- `make run` starts the service (`python -m formlens`). Tests use `uv run pytest`.
 - `make openapi` regenerates `openapi.json`. It is generated from the app; never edit it by hand.
   Commit it with any change that alters the API.
 - `make api-check` runs Spectral, oasdiff and Schemathesis (needs Node, Docker or oasdiff).
@@ -19,12 +19,6 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
 
 - Service core: `config.py`, `logging_config.py`, `middleware.py`, `problems.py`, `openapi.py`,
   `types.py`, `pagination.py`, `query.py`, `health/`.
-<!-- begin:example -->
-- Example domain: `src/fastapi_szumplate/library/` and `tests/library/`, mounted by one
-  `include_library(app)` call in `main.py`. Nothing else may import `library`. Remove it with
-  `docs/how-to/remove-the-example.md`.
-- `books` uses the default module shape; `loans` is hexagonal.
-<!-- end:example -->
 - Add structure to a module only when it hurts (see `docs/explanation/architecture.md`).
   New modules start like `docs/how-to/add-a-module.md` says.
 
@@ -43,12 +37,8 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
 - Tests build settings with `Settings(_env_file=None)` (see `tests/conftest.py: make_settings`),
   replace dependencies with `app.dependency_overrides` (cleared afterwards by the `app` fixture)
   and build data with factories, setting every value the test asserts on.
-  The example's factories are in `tests/library/factories.py`. <!-- only:example -->
 - Tests of the core use `/health` and the probe routes of `tests/probes.py` (fixture
   `probe_app`).
-  They never call the example's routes, so they survive removing the example; <!-- only:example -->
-  `tests/library/` holds the example-bound ones. <!-- only:example -->
-  `make smoke-template` proves a copy without the example passes `make check`. <!-- only:template -->
 - Logging: structlog, constant event names, snake_case fields, no f-strings, no `print`. Log a
   handled error once, where it is handled. Never log secrets; the `redact` processor is a safety
   net, not a licence.
@@ -63,11 +53,3 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
   bump the Spectral, oasdiff and pip-audit pins in `Makefile`.
 - `README.md` must name every make target (`tests/test_docs.py`).
 - `uv run --python 3.15t` replaces `.venv` with the free-threaded build; `uv sync` restores it.
-<!-- begin:template -->
-- A line ending in an audience marker (`only:template`, `begin:example` … `end:example`, also as
-  `# ...` outside Markdown) is kept or dropped by `scripts/init_project.py` in a project copy.
-  Text that names the example (library, book, loan, isbn) must sit inside an `example` block,
-  or `make smoke-template` fails its reference check.
-- `tests/test_init_project.py` and `make smoke-template` copy tracked and untracked
-  (not ignored) files, so a stray file in the repo root can fail them. Move it out first.
-<!-- end:template -->

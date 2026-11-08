@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from fastapi_szumplate.main import create_app
+from formlens.main import create_app
 
 
 def test_health_returns_ok() -> None:

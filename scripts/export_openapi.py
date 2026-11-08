@@ -11,8 +11,8 @@ import json
 import sys
 from pathlib import Path
 
-from fastapi_szumplate.config import Settings
-from fastapi_szumplate.main import create_app
+from formlens.config import Settings
+from formlens.main import create_app
 
 DEFAULT_PATH = Path(__file__).resolve().parent.parent / "openapi.json"
 

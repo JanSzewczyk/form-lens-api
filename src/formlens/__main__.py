@@ -1,9 +1,9 @@
-"""Start the service with `python -m fastapi_szumplate`."""
+"""Start the service with `python -m formlens`."""
 
 import uvicorn
 
-from fastapi_szumplate.config import Settings
-from fastapi_szumplate.logging_config import configure_logging
+from formlens.config import Settings
+from formlens.logging_config import configure_logging
 
 
 def main() -> None:
@@ -11,7 +11,7 @@ def main() -> None:
     settings = Settings()
     configure_logging(settings)
     uvicorn.run(
-        "fastapi_szumplate.main:create_app",
+        "formlens.main:create_app",
         factory=True,
         host=settings.host,
         port=settings.port,

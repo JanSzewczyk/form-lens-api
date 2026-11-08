@@ -1,9 +1,9 @@
-"""FastAPI Szumplate package."""
+"""Formlens package."""
 
 from importlib.metadata import PackageNotFoundError, version
 
 try:
-    __version__ = version("fastapi-szumplate")
+    __version__ = version("formlens")
 except PackageNotFoundError:  # pragma: no cover - only when the source tree is not installed
     __version__ = "0.0.0"
 

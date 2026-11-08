@@ -12,7 +12,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from fastapi_szumplate.problems import problem, unhandled_problem
+from formlens.problems import problem, unhandled_problem
 
 REQUEST_ID_HEADER: Final = "X-Request-ID"
 _VALID_REQUEST_ID: Final = re.compile(r"[A-Za-z0-9._-]{1,64}")

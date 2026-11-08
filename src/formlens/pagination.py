@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import Depends, Query
 from pydantic import BaseModel, Field
 
-from fastapi_szumplate.config import Settings, get_settings
+from formlens.config import Settings, get_settings
 
 MAX_PAGE_SIZE = 100
 

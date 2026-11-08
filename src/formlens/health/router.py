@@ -5,14 +5,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from fastapi_szumplate.health.readiness import (
+from formlens.health.readiness import (
     SERVICE_NOT_READY,
     ReadinessCheck,
     get_readiness_checks,
     run_checks,
 )
-from fastapi_szumplate.health.schemas import HealthResponse, ReadinessResponse
-from fastapi_szumplate.problems import problem_response
+from formlens.health.schemas import HealthResponse, ReadinessResponse
+from formlens.problems import problem_response
 
 router = APIRouter(tags=["health"])
 

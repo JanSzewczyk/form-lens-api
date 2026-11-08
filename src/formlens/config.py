@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    app_name: str = Field(default="fastapi-szumplate", description="Title shown in the API docs.")
+    app_name: str = Field(default="formlens", description="Title shown in the API docs.")
     environment: Environment = Field(
         default="local", description="Deployment environment; `auto` log format follows it."
     )
@@ -51,10 +51,6 @@ class Settings(BaseSettings):
     default_page_size: int = Field(
         default=20, ge=1, le=100, description="Page size when a list request gives no limit."
     )
-    loans_max_active_per_member: int = Field(
-        default=3, ge=1, description="Example domain: active loans one member may hold."
-    )
-    loan_days: int = Field(default=14, ge=1, description="Example domain: days between borrowing and the due date.")
 
     @property
     def resolved_log_format(self) -> Literal["json", "console"]:

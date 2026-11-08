@@ -4,8 +4,8 @@ from typing import Any, Final
 
 from fastapi import FastAPI
 
-from fastapi_szumplate import __version__
-from fastapi_szumplate.problems import PROBLEM_MEDIA_TYPE
+from formlens import __version__
+from formlens.problems import PROBLEM_MEDIA_TYPE
 
 DESCRIPTION: Final = """\
 Production-ready FastAPI service.
@@ -18,7 +18,7 @@ you report a problem.
 METADATA: Final[dict[str, Any]] = {
     "version": __version__,
     "description": DESCRIPTION,
-    "contact": {"name": "Szum-Tech", "url": "https://github.com/JanSzewczyk/fastapi-szumplate"},
+    "contact": {"name": "Szum-Tech", "url": "https://github.com/JanSzewczyk/formlens"},
     "license_info": {"name": "MIT", "identifier": "MIT"},
     # Relative, so "Try it out" calls the host that serves the docs, wherever it runs.
     "servers": [{"url": "/", "description": "The host that serves this document"}],

@@ -8,11 +8,11 @@ from typing import Any, Final
 import structlog
 from structlog.types import EventDict, Processor
 
-from fastapi_szumplate.config import Settings
+from formlens.config import Settings
 
 SENSITIVE_PARTS: Final = ("password", "token", "authorization", "api_key", "secret", "cookie")
 REDACTED: Final = "***"
-_HANDLER_TAG: Final = "_fastapi_szumplate_handler"
+_HANDLER_TAG: Final = "_formlens_handler"
 # Extras uvicorn attaches to its own records; they repeat the message.
 _NOISY_EXTRAS: Final = ("color_message",)
 

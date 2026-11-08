@@ -7,9 +7,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from fastapi_szumplate.main import create_app
-from fastapi_szumplate.middleware import UnhandledErrorMiddleware
-from fastapi_szumplate.problems import (
+from formlens.main import create_app
+from formlens.middleware import UnhandledErrorMiddleware
+from formlens.problems import (
     PROBLEM_MEDIA_TYPE,
     ProblemType,
     malformed_body_response,
@@ -102,7 +102,7 @@ def test_validation_error_names_the_field_and_never_echoes_the_input(probe: Test
 
     body = body_of(response)
     assert response.status_code == 422
-    assert body["type"] == "urn:problem:fastapi-szumplate:validation-error"
+    assert body["type"] == "urn:problem:formlens:validation-error"
     [issue] = body["errors"]
     assert set(issue) == {"loc", "msg", "type"}
     assert issue["loc"] == ["query", "limit"]
@@ -146,7 +146,7 @@ def test_domain_error_gets_its_own_type_and_is_logged_as_a_warning(
 
     body = body_of(response)
     assert response.status_code == 409
-    assert body["type"] == "urn:problem:fastapi-szumplate:probe-refused"
+    assert body["type"] == "urn:problem:formlens:probe-refused"
     assert body["title"] == "Probe refused"
     assert body["detail"] == "not today"
     refusals = [json.loads(line) for line in capsys.readouterr().out.splitlines() if '"request_refused"' in line]
@@ -279,7 +279,7 @@ def test_register_domain_errors_maps_each_exception_and_its_subclasses_and_recor
     body = body_of(response)
     assert response.status_code == 404
     assert (body["type"], body["detail"]) == (
-        "urn:problem:fastapi-szumplate:probe-missing",
+        "urn:problem:formlens:probe-missing",
         "part 7",
     )
     assert MISSING in probe_app.state.problem_types

@@ -1,6 +1,5 @@
 .PHONY: install format lint typecheck imports test check run openapi openapi-check api-lint \
 	api-breaking schemathesis api-check audit docker-build docker-run clean
-.PHONY: smoke-template  # only:template
 
 # bash for `set -o pipefail` in recipes (macOS make 3.81 has no .SHELLFLAGS).
 SHELL := bash
@@ -40,7 +39,7 @@ check:
 	$(MAKE) openapi-check
 
 run:
-	uv run python -m fastapi_szumplate
+	uv run python -m formlens
 
 # openapi.json is generated from the app; never edit it by hand.
 openapi:
@@ -78,23 +77,15 @@ audit:
 		| $(PIP_AUDIT) --disable-pip -r /dev/stdin
 
 docker-build:
-	docker build -t fastapi-szumplate:local .
+	docker build -t formlens:local .
 
 # Needs a .env (cp .env.example .env). HOST and PORT are forced: the server must listen on 0.0.0.0.
 # ENVIRONMENT is forced too, as in compose.yaml: --env-file would otherwise replace the image's
 # `production` with the `local` of .env.example. -e wins over --env-file.
 docker-run:
 	docker run --rm -p 8000:8000 --read-only --tmpfs /tmp --env-file .env \
-		-e HOST=0.0.0.0 -e PORT=8000 -e ENVIRONMENT=production fastapi-szumplate:local
+		-e HOST=0.0.0.0 -e PORT=8000 -e ENVIRONMENT=production formlens:local
 
-# begin:template
-# Builds projects from this template in a temp dir, with and without the example, and runs their
-# gates (uv sync --locked, make openapi, make check). Slow: it installs two environments.
-smoke-template:
-	scripts/smoke_template.sh
-	scripts/smoke_template.sh --rename-only
-
-# end:template
 clean:
 	rm -rf .mypy_cache .pytest_cache .ruff_cache .hypothesis .import_linter_cache .schemathesis \
 		htmlcov .coverage .coverage.* $(BASE_SPEC)

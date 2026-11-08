@@ -15,7 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import JSONResponse, Response
 
 PROBLEM_MEDIA_TYPE: Final = "application/problem+json"
-PROBLEM_TYPE_PREFIX: Final = "urn:problem:fastapi-szumplate:"
+PROBLEM_TYPE_PREFIX: Final = "urn:problem:formlens:"
 _HTTP_METHODS: Final = frozenset({"get", "put", "post", "delete", "patch", "head", "options"})
 _UNHANDLED_DETAIL: Final = "The server failed to process the request."
 _FASTAPI_BODY_PARSE_DETAIL: Final = "There was an error parsing the body"  # fastapi/routing.py
@@ -57,7 +57,7 @@ class ProblemDetail(BaseModel):
     type: str = Field(
         default="about:blank",
         description="URI that identifies the kind of problem; clients branch on it.",
-        examples=["urn:problem:fastapi-szumplate:validation-error"],
+        examples=["urn:problem:formlens:validation-error"],
     )
     title: str = Field(description="Short, stable summary of the kind.", examples=["Not Found"])
     status: int = Field(description="HTTP status code.", examples=[404])

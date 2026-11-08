@@ -6,7 +6,7 @@ from typing import cast
 import structlog
 from fastapi import FastAPI, Request
 
-from fastapi_szumplate.problems import ProblemType, register_domain_errors
+from formlens.problems import ProblemType, register_domain_errors
 
 type ReadinessCheck = Callable[[], None]
 

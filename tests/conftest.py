@@ -7,8 +7,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from fastapi_szumplate.config import Settings
-from fastapi_szumplate.main import create_app
+from formlens.config import Settings
+from formlens.main import create_app
 from tests.probes import add_probe_routes
 
 

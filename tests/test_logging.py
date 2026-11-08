@@ -12,9 +12,9 @@ from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
 from starlette.datastructures import Headers
 
-from fastapi_szumplate import __main__ as entry_point
-from fastapi_szumplate.logging_config import _HANDLER_TAG, configure_logging
-from fastapi_szumplate.main import create_app
+from formlens import __main__ as entry_point
+from formlens.logging_config import _HANDLER_TAG, configure_logging
+from formlens.main import create_app
 from tests.conftest import make_settings
 
 
@@ -324,7 +324,7 @@ def test_entry_point_starts_uvicorn_with_our_logging(monkeypatch: pytest.MonkeyP
         entry_point.main()
 
     run.assert_called_once()
-    assert run.call_args.args == ("fastapi_szumplate.main:create_app",)
+    assert run.call_args.args == ("formlens.main:create_app",)
     kwargs = run.call_args.kwargs
     assert kwargs["factory"] is True
     assert kwargs["port"] == 9100

@@ -4,7 +4,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from fastapi_szumplate.health.readiness import register_readiness_check
+from formlens.health.readiness import register_readiness_check
 
 
 def broken() -> None:
@@ -37,7 +37,7 @@ def test_failed_check_is_a_503_problem_naming_the_check_not_the_error(
     body = response.json()
     assert response.status_code == 503
     assert response.headers["content-type"] == "application/problem+json"
-    assert body["type"] == "urn:problem:fastapi-szumplate:service-not-ready"
+    assert body["type"] == "urn:problem:formlens:service-not-ready"
     assert body["detail"] == "Not ready: database"
     assert "hunter2" not in response.text
     logged = [json.loads(line) for line in capsys.readouterr().out.splitlines() if "readiness_check" in line]

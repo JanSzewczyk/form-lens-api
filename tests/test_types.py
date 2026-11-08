@@ -3,7 +3,7 @@ from datetime import UTC, date, datetime
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from fastapi_szumplate.types import IsoAwareDatetime, IsoDate, WholeNumber
+from formlens.types import IsoAwareDatetime, IsoDate, WholeNumber
 
 
 class Dated(BaseModel):

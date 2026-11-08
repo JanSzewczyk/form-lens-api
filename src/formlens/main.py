@@ -2,20 +2,19 @@
 
 from fastapi import Depends, FastAPI
 
-from fastapi_szumplate.config import Settings
-from fastapi_szumplate.health.readiness import install_readiness
-from fastapi_szumplate.health.router import router as health_router
-from fastapi_szumplate.library import include_library
-from fastapi_szumplate.logging_config import configure_logging
-from fastapi_szumplate.middleware import (
+from formlens.config import Settings
+from formlens.health.readiness import install_readiness
+from formlens.health.router import router as health_router
+from formlens.logging_config import configure_logging
+from formlens.middleware import (
     REQUEST_ID_HEADER,
     ProblemCORSMiddleware,
     RequestContextMiddleware,
     UnhandledErrorMiddleware,
 )
-from fastapi_szumplate.openapi import HEALTH_TAG, METADATA, install_openapi
-from fastapi_szumplate.problems import add_problem_handlers
-from fastapi_szumplate.query import reject_repeated_query_parameters
+from formlens.openapi import HEALTH_TAG, METADATA, install_openapi
+from formlens.problems import add_problem_handlers
+from formlens.query import reject_repeated_query_parameters
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -44,7 +43,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     install_openapi(app)
     install_readiness(app)
     app.include_router(health_router)
-    include_library(app)  # the example domain; remove this line and the import to drop it
 
     # Starlette makes the last middleware added the outermost one: request context, then CORS,
     # then the 500 answer, so a 500 problem carries the request id and the CORS headers.

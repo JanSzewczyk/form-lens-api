@@ -3,7 +3,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from fastapi_szumplate.query import REPEATED_PARAMETER
+from formlens.query import REPEATED_PARAMETER
 
 PROBLEM = "application/problem+json"
 SECRET = "s3cr3t-hunter2"

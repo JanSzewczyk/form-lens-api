@@ -8,7 +8,7 @@ from typing import Annotated
 from fastapi import FastAPI, HTTPException, Path, Query
 from pydantic import BaseModel, ConfigDict, Field
 
-from fastapi_szumplate.problems import ProblemType, domain_error_handler
+from formlens.problems import ProblemType, domain_error_handler
 
 
 class Payload(BaseModel):

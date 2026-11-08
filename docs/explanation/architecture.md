@@ -5,10 +5,6 @@
 Top-level packages are business areas; the layers (router, schemas, service, repository) sit
 inside each. A change to one area edits one folder. `health` is the one area the core ships.
 
-<!-- begin:example -->
-The example adds `library/books` and `library/loans`: a change to "loans" edits one folder.
-<!-- end:example -->
-
 ## Module shapes, and one rule for choosing
 
 - **Default shape**: router, schemas, models, service, repository. The service is a few lines and
@@ -22,11 +18,6 @@ Structure is added to one module at a time, when it hurts: the same rule copied 
 a rule test that needs a database, business terms missing from the code. Do not convert a module
 to match another.
 
-<!-- begin:example -->
-`books` has the default shape (its only rule is "an ISBN is unique"); `loans` has the hexagonal
-one, with `Loan.lend` and `Loan.give_back` in `domain/`. Do not convert `books` to match `loans`.
-<!-- end:example -->
-
 ## Import direction
 
 Routers depend on services, services on the domain and its ports, adapters on the domain. The
@@ -39,25 +30,11 @@ factory `main.py`, then the features (`health`, `middleware`, `openapi`, `loggin
 `pagination`), then the foundations (`problems`, `config`, `query`, `types`). A layer imports only
 the layers below it. A new core module joins the contract in the layer it belongs to.
 
-<!-- begin:example -->
-Only `dependencies.py`, `library/__init__.py` and `main.py` import adapters. `loans` asks `books`
-for one number (the capacity) through `loans/adapters/books_catalog.py`.
-
-## The core never knows the example
-
-`main.py` calls `include_library(app)`; nothing else outside `library/` mentions it. That is what
-makes the example removable as a unit.
-<!-- end:example -->
-
 ## Wiring
 
 `create_app(settings)` builds the app. Adapters are built once and stored on `app.state`;
 dependencies read them from the request, so tests replace them with `app.dependency_overrides` and
 the app never has module-level state.
-
-<!-- begin:example -->
-The example's repositories are built in `include_library`.
-<!-- end:example -->
 
 ## Logging is configured twice, on purpose
 
@@ -85,6 +62,3 @@ strings.
 
 A rule that reads before it writes is guarded by one atomic step, and each guard has a parallel
 test that fails without it. See [add-a-module](../how-to/add-a-module.md).
-<!-- begin:example -->
-[swap-in-a-database](../how-to/swap-in-a-database.md) shows the guards in SQL.
-<!-- end:example -->

@@ -6,8 +6,8 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from fastapi_szumplate.config import Settings, get_settings
-from fastapi_szumplate.main import create_app
+from formlens.config import Settings, get_settings
+from formlens.main import create_app
 from tests.conftest import make_settings
 
 ENV_EXAMPLE = Path(__file__).resolve().parent.parent / ".env.example"

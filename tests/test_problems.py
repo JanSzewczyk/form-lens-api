@@ -291,3 +291,64 @@ def test_the_malformed_body_response_documents_a_problem_without_a_slug() -> Non
 
     assert entry["content"] == {PROBLEM_JSON: {}}
     assert "could not be read as text" in entry["description"]
+
+
+class Busy(Exception):
+    """Probe: a service failure that tells the client when to try again."""
+
+    def __init__(self, retry_after_seconds: object) -> None:
+        super().__init__("busy")
+        self.retry_after_seconds = retry_after_seconds
+
+
+BUSY = ProblemType("probe-busy", "Probe busy", 503)
+BROKEN = ProblemType("probe-broken", "Probe broken", 500)
+
+
+def raise_on_get(app: FastAPI, path: str, error: Exception, mapping: dict[type[Exception], ProblemType]) -> Any:
+    @app.get(path, operation_id=f"get{path.replace('/', '_')}")
+    def route() -> None:
+        raise error
+
+    register_domain_errors(app, mapping)
+    return TestClient(app).get(path)
+
+
+def test_a_domain_error_with_retry_after_seconds_sets_the_retry_after_header(probe_app: FastAPI) -> None:
+    response = raise_on_get(probe_app, "/probe/busy", Busy(7), {Busy: BUSY})
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "7"
+    assert body_of(response)["type"] == "urn:problem:formlens:probe-busy"
+
+
+def test_a_domain_error_without_retry_after_seconds_sends_no_retry_after_header(probe_app: FastAPI) -> None:
+    response = TestClient(probe_app).get("/probe/refused")
+
+    assert response.status_code == 409
+    assert "Retry-After" not in response.headers
+
+
+@pytest.mark.parametrize("value", [None, True, -1, "5", 1.5], ids=["none", "bool", "negative", "text", "float"])
+def test_a_retry_after_seconds_that_is_not_a_whole_count_is_ignored(probe_app: FastAPI, value: object) -> None:
+    response = raise_on_get(probe_app, "/probe/busy", Busy(value), {Busy: BUSY})
+
+    assert response.status_code == 503
+    assert "Retry-After" not in response.headers
+
+
+def test_a_service_failure_is_logged_as_an_error_and_a_refusal_as_a_warning(
+    probe_app: FastAPI, capsys: pytest.CaptureFixture[str]
+) -> None:
+    response = raise_on_get(probe_app, "/probe/broken", Busy(3), {Busy: BROKEN})
+    TestClient(probe_app).get("/probe/refused")
+
+    assert response.status_code == 500
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith("{")]
+    levels = {
+        event["event"]: event["level"] for event in events if event["event"] in {"request_failed", "request_refused"}
+    }
+    assert levels == {"request_failed": "error", "request_refused": "warning"}
+    failed = next(event for event in events if event["event"] == "request_failed")
+    assert (failed["problem"], failed["status"]) == ("probe-broken", 500)
+    assert "exception" not in failed

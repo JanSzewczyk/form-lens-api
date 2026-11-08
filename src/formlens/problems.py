@@ -132,19 +132,34 @@ def problem(
     )
 
 
+def _retry_after_seconds(exc: Exception) -> int | None:
+    """Read the optional `retry_after_seconds` of a domain exception; anything but a count is ignored."""
+    seconds = getattr(exc, "retry_after_seconds", None)
+    if isinstance(seconds, int) and not isinstance(seconds, bool) and seconds >= 0:
+        return seconds
+    return None
+
+
 def domain_error_handler(
     mapping: Mapping[type[Exception], ProblemType],
 ) -> Callable[[Request, Exception], Awaitable[Response]]:
     """Build the one handler a domain registers for its exceptions.
 
     The mapping keeps domain exceptions free of HTTP: the domain raises, this turns it into a
-    problem with its own type. A refusal is expected, so it is a warning without a traceback.
+    problem with its own type. A refusal (4xx) is expected, so it is a warning without a traceback;
+    a failure of the service (5xx) is an error. An exception that carries a whole-second
+    `retry_after_seconds` makes the response say when to try again, in a `Retry-After` header.
     """
 
     async def handle(request: Request, exc: Exception) -> Response:
         kind = next(mapping[cls] for cls in type(exc).__mro__ if cls in mapping)
-        log.warning("request_refused", problem=kind.slug, status=kind.status)
-        return problem(request, status=kind.status, title=kind.title, detail=str(exc), type_=kind.type)
+        retry_after = _retry_after_seconds(exc)
+        headers = {"Retry-After": str(retry_after)} if retry_after is not None else None
+        if kind.status >= HTTPStatus.INTERNAL_SERVER_ERROR:
+            log.error("request_failed", problem=kind.slug, status=kind.status)
+        else:
+            log.warning("request_refused", problem=kind.slug, status=kind.status)
+        return problem(request, status=kind.status, title=kind.title, detail=str(exc), type_=kind.type, headers=headers)
 
     return handle
 

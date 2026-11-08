@@ -381,10 +381,11 @@ The service reads all settings from the environment or `.env` (see `.env.example
 | `VLM_BACKEND` | `mlx` | `mlx` (the backend this project uses on Apple Silicon) or `transformers` |
 | `MAX_UPLOAD_MB` | `25` | Largest accepted upload, in megabytes (1 or more) |
 | `MAX_CONCURRENCY` | `1` | Documents converted at the same time (1 or more) |
+| `PARSE_TIMEOUT_SECONDS` | `300` | Seconds one document may take to parse (1 or more) |
 
 Every key is optional. An invalid value stops the service at start-up instead of failing later.
-`MODELS_PATH`, `VLM_BACKEND`, `MAX_UPLOAD_MB` and `MAX_CONCURRENCY` are read and validated in
-Stage 0 but nothing uses them until Stage 1.
+`MODELS_PATH`, `VLM_BACKEND`, `MAX_UPLOAD_MB`, `MAX_CONCURRENCY` and `PARSE_TIMEOUT_SECONDS` are
+read and validated, but nothing uses them until the parsing module lands.
 
 ---
 

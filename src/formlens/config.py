@@ -72,6 +72,11 @@ class Settings(BaseSettings):
     max_concurrency: int = Field(
         default=1, ge=1, description="Documents converted at the same time; the model is heavy, so keep it low."
     )
+    parse_timeout_seconds: int = Field(
+        default=300,
+        ge=1,
+        description="Seconds one document may take to parse before the request fails with 500 `parse-failed`.",
+    )
 
     @field_validator("models_path", mode="before")
     @classmethod

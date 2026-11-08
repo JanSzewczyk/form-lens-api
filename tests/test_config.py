@@ -34,6 +34,7 @@ def test_model_settings_default_to_the_local_apple_silicon_setup() -> None:
     assert settings.vlm_backend == "mlx"
     assert settings.max_upload_mb == 25
     assert settings.max_concurrency == 1
+    assert settings.parse_timeout_seconds == 300
 
 
 def test_a_copied_env_example_keeps_the_docs_off_in_production() -> None:
@@ -135,6 +136,7 @@ NON_DEFAULT_ENVIRONMENT = {
     "VLM_BACKEND": "transformers",
     "MAX_UPLOAD_MB": "5",
     "MAX_CONCURRENCY": "3",
+    "PARSE_TIMEOUT_SECONDS": "7",
 }
 
 
@@ -193,6 +195,9 @@ def test_the_settings_tests_pass_when_the_shell_exports_every_setting() -> None:
         ("MAX_UPLOAD_MB", "1.5"),
         ("MAX_UPLOAD_MB", ""),
         ("MODELS_PATH", ""),
+        ("PARSE_TIMEOUT_SECONDS", "0"),
+        ("PARSE_TIMEOUT_SECONDS", "-5"),
+        ("PARSE_TIMEOUT_SECONDS", "soon"),
         ("MAX_CONCURRENCY", "0"),
         ("MAX_CONCURRENCY", "-3"),
         ("MAX_CONCURRENCY", "two"),
@@ -207,6 +212,9 @@ def test_the_settings_tests_pass_when_the_shell_exports_every_setting() -> None:
         "upload-fraction",
         "upload-empty",
         "models-path-empty",
+        "timeout-zero",
+        "timeout-negative",
+        "timeout-text",
         "concurrency-zero",
         "concurrency-negative",
         "concurrency-text",
@@ -224,7 +232,7 @@ def test_an_invalid_model_setting_in_the_environment_stops_the_app_from_being_bu
         create_app()
 
 
-@pytest.mark.parametrize("name", ["MAX_UPLOAD_MB", "MAX_CONCURRENCY"])
+@pytest.mark.parametrize("name", ["MAX_UPLOAD_MB", "MAX_CONCURRENCY", "PARSE_TIMEOUT_SECONDS"])
 def test_one_is_the_smallest_accepted_count(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
     monkeypatch.setenv(name, "1")
 

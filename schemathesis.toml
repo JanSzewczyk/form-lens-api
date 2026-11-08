@@ -1,3 +1,11 @@
 # Read by `schemathesis run` from the working directory.
 [phases.stateful]
 max-steps = 50
+
+# The file part is a string of any bytes in the schema; what the schema cannot say is that the service
+# types the file by its signature (a PDF, PNG, JPEG or TIFF) and answers 415 to anything else. This is
+# the rejection Schemathesis allows an operation to declare (`st explain ST202`); the check itself and
+# every phase stay on, and the other statuses of the default list stay as they are.
+[[operations]]
+include-name = "POST /v1/documents/parse"
+checks.positive_data_acceptance.expected-statuses = ["2xx", "3xx", "401", "403", "404", "409", "429", "5xx", "415"]

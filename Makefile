@@ -91,12 +91,16 @@ download-models:
 docker-build:
 	docker build -t formlens:local .
 
-# Needs a .env (cp .env.example .env). HOST and PORT are forced: the server must listen on 0.0.0.0.
-# ENVIRONMENT is forced too, as in compose.yaml: --env-file would otherwise replace the image's
-# `production` with the `local` of .env.example. -e wins over --env-file.
+# Needs a .env (cp .env.example .env) and the transformers model (make download-models
+# VLM_BACKEND=transformers), mounted read-only; MODELS_PATH (default models/) names the host folder.
+# HOST, PORT, ENVIRONMENT, VLM_BACKEND and MODELS_PATH are forced: the server must listen on 0.0.0.0,
+# --env-file would replace the image's `production` with the `local` of .env.example, `mlx` does not
+# run in a Linux container and the container sees the model at /models. -e wins over --env-file.
 docker-run:
 	docker run --rm -p 8000:8000 --read-only --tmpfs /tmp --env-file .env \
-		-e HOST=0.0.0.0 -e PORT=8000 -e ENVIRONMENT=production formlens:local
+		--volume "$(abspath $(or $(MODELS_PATH),models)):/models:ro" \
+		-e HOST=0.0.0.0 -e PORT=8000 -e ENVIRONMENT=production \
+		-e VLM_BACKEND=transformers -e MODELS_PATH=/models formlens:local
 
 clean:
 	rm -rf .mypy_cache .pytest_cache .ruff_cache .hypothesis .import_linter_cache .schemathesis \

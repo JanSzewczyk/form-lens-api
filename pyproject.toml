@@ -136,7 +136,7 @@ type = "layers"
 layers = [
     "formlens.__main__",
     "formlens.main",
-    "formlens.health | formlens.middleware | formlens.openapi | formlens.logging_config | formlens.pagination",
+    "formlens.health | formlens.middleware | formlens.openapi | formlens.logging_config | formlens.pagination | formlens.parsing",
     "formlens.problems | formlens.config | formlens.query | formlens.types",
     "formlens.modelspec",
 ]
@@ -153,9 +153,60 @@ source_modules = [
     "formlens.modelspec",
     "formlens.openapi",
     "formlens.pagination",
+    "formlens.parsing",
     "formlens.problems",
     "formlens.query",
     "formlens.types",
 ]
 forbidden_modules = ["uvicorn"]
 
+
+[[tool.importlinter.contracts]]
+name = "Only the Docling adapter imports the document stack"
+type = "forbidden"
+source_modules = ["formlens"]
+forbidden_modules = ["docling", "torch", "transformers", "mlx_vlm", "PIL"]
+# The one door: the adapter imports Docling inside build_docling_parser. A chain through it from main
+# goes away with this edge, so the adapter does not make every module that imports it a violation.
+ignore_imports = ["formlens.parsing.docling_parser -> docling"]
+
+[[tool.importlinter.contracts]]
+name = "Parsing is layered: router, dependencies, service, then ports, slots and models, then exceptions"
+type = "layers"
+layers = [
+    "formlens.parsing.router",
+    "formlens.parsing.dependencies",
+    "formlens.parsing.service",
+    "formlens.parsing.slots | formlens.parsing.ports | formlens.parsing.models",
+    "formlens.parsing.exceptions",
+]
+
+[[tool.importlinter.contracts]]
+name = "Only the application factory imports the Docling adapter"
+type = "forbidden"
+# Listed one by one: a source that contains the forbidden module (`formlens` itself) makes the check
+# find nothing. `formlens.main` and `formlens.__main__` are left out on purpose: main is the door.
+# `tests/test_tooling.py` fails when a module of the package is neither listed here nor left out.
+source_modules = [
+    "formlens.config",
+    "formlens.health",
+    "formlens.logging_config",
+    "formlens.middleware",
+    "formlens.modelspec",
+    "formlens.openapi",
+    "formlens.pagination",
+    "formlens.parsing.body_limit",
+    "formlens.parsing.dependencies",
+    "formlens.parsing.errors",
+    "formlens.parsing.exceptions",
+    "formlens.parsing.models",
+    "formlens.parsing.ports",
+    "formlens.parsing.router",
+    "formlens.parsing.schemas",
+    "formlens.parsing.service",
+    "formlens.parsing.slots",
+    "formlens.problems",
+    "formlens.query",
+    "formlens.types",
+]
+forbidden_modules = ["formlens.parsing.docling_parser"]

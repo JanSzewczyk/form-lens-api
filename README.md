@@ -64,7 +64,7 @@ The API listens on http://127.0.0.1:8000; `curl http://127.0.0.1:8000/health` an
 
 - [![Ruff](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22ruff%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Ruff&logo=ruff&logoColor=white)](https://docs.astral.sh/ruff/) — format and lint, with security, async, logging and docstring rules
 - [![mypy](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22mypy%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=mypy)](https://mypy.readthedocs.io/) — `strict = true` with the Pydantic plugin and extra error codes, over `src`, `tests` and `scripts`
-- [![import-linter](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22import-linter%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=import-linter)](https://import-linter.readthedocs.io/) — contracts: the core is layered, only the entry point imports uvicorn, the core is layered and only the entry point imports uvicorn
+- [![import-linter](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22import-linter%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=import-linter)](https://import-linter.readthedocs.io/) — contracts: the core is layered and only the entry point imports uvicorn
 - [![pytest](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22pytest%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=pytest&logo=pytest&logoColor=white)](https://docs.pytest.org/) — strict mode, warnings are errors, random order, 60 s timeout per test
 - [![coverage](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22coverage%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=coverage)](https://coverage.readthedocs.io/) — branch coverage of `src` and `scripts`, at least 95%
 - [![Hypothesis](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22hypothesis%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Hypothesis)](https://hypothesis.readthedocs.io/) — property-based tests
@@ -116,7 +116,7 @@ The API listens on http://127.0.0.1:8000; `curl http://127.0.0.1:8000/health` an
 ### 📋 Prerequisites
 
 - **[Python](https://www.python.org/downloads/)** 3.15 — uv installs it for you when it is missing
-- **macOS 14 or newer on Apple Silicon** for the default `VLM_BACKEND=mlx` (MLX runs on Apple Silicon only). On other systems set `VLM_BACKEND=transformers`; that backend has been neither downloaded nor run so far
+- **macOS 14 or newer on Apple Silicon** for the default `VLM_BACKEND=mlx`, the backend this project uses on Apple Silicon (macOS 14 is the minimum for the macOS `mlx` wheels). This project has run it only there. On other systems set `VLM_BACKEND=transformers`; that backend has been neither downloaded nor run so far
 - **[uv](https://docs.astral.sh/uv/)** 0.13.7 or newer, for dependencies and virtual environments
 - **GNU Make** to run the commands below
 - **Git** for version control
@@ -154,10 +154,30 @@ make download-models
 
 This fetches the model pinned for `VLM_BACKEND` (about 0.6 GB for `mlx`) into `MODELS_PATH`
 (`models/` by default, git-ignored) as `models/ibm-granite--granite-docling-258M-mlx/`. It needs
-network access and uv, and does nothing when the pinned revision is already there. Pass the backend
-or folder on the command line (`make download-models VLM_BACKEND=transformers`); the script does not
-read `.env`. A relative `MODELS_PATH` is read from the working directory, as the service reads it
-(`make` runs from the repository root). `make test-models` then checks that the files are in place. Licences: [docs/licenses.md](docs/licenses.md).
+network access and uv, and does nothing when the pinned revision is already there. A relative
+`MODELS_PATH` is read from the working directory, as the service reads it (`make` runs from the
+repository root). `make test-models` then checks that the files are in place. An empty
+`MODELS_PATH` or `VLM_BACKEND` is refused, by the script as by the service. Licences:
+[docs/licenses.md](docs/licenses.md).
+
+**The script reads only the process environment, never `.env`.** `make download-models` and
+`make test-models` see the variables you export and the ones you pass to `make`, not the ones in
+`.env`: a `.env` with `MODELS_PATH=/elsewhere` or `VLM_BACKEND=transformers` moves the service
+(`make run`) but not the download or the check. To point them elsewhere, export the variables or
+pass them on the command line, with the same values for all three commands:
+
+```bash
+make download-models VLM_BACKEND=transformers MODELS_PATH=/data/models
+make test-models VLM_BACKEND=transformers MODELS_PATH=/data/models
+```
+
+This is a known gap: the script repeats the defaults and the validation of `Settings` in bash.
+One source for both is a Stage 1 follow-up (see
+[architecture.md](docs/explanation/architecture.md#carry-forward-notes-for-stage-1)).
+
+`HF_CLI` replaces the downloader (the tests use a fake one). It is split on spaces into a command
+and its arguments, so a path that contains a space does not work; point it at a wrapper script
+whose path has none.
 
 #### 5. Start the Service
 
@@ -309,8 +329,12 @@ Start every module with the default shape (router, schemas, models, service, rep
 make test
 ```
 
-- Tests mirror `src/`. They build settings with `Settings(_env_file=None)`, replace dependencies
-  with `app.dependency_overrides` and build data with factories.
+- Tests mirror `src/`. They build settings with `Settings(_env_file=None)` (`make_settings` in
+  `tests/conftest.py`) and replace dependencies with `app.dependency_overrides`. There is no
+  factories module yet; a test sets the values it asserts on inline.
+- An autouse fixture in `tests/conftest.py` removes every setting from the environment, so an
+  exported `DOCS_ENABLED=true` cannot change a test. The `slow` tests are exempt: they read
+  `MODELS_PATH` and `VLM_BACKEND` from the environment.
 - Tests of the core use `/health` and the probe routes of `tests/probes.py`, so they never depend
   on a domain module.
 - pytest runs in strict mode: unknown markers and config keys fail, and so does any warning.
@@ -335,14 +359,12 @@ curl http://127.0.0.1:8000/health   # in another: {"status": "ok"}
 
 The service must start and answer without network access. Stage 0 never loads the model, so this
 only proves that nothing at start-up needs the network; repeat it with a real conversion in Stage 1.
-- `make schemathesis` starts the service and runs Schemathesis with every check and phase against
-  `openapi.json`.
 
 ---
 
 ## 🔧 Configuration
 
-All settings come from the environment or `.env` (see `.env.example`):
+The service reads all settings from the environment or `.env` (see `.env.example`); the download script reads the environment only (see [Download the Model](#4-download-the-model)):
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -355,8 +377,8 @@ All settings come from the environment or `.env` (see `.env.example`):
 | `HOST`, `PORT`, `RELOAD` | `127.0.0.1`, `8000`, `false` | Server binding |
 | `GRACEFUL_SHUTDOWN_SECONDS` | `20` | Time open requests get after SIGTERM; keep it below the orchestrator's grace period |
 | `DEFAULT_PAGE_SIZE` | `20` | Page size when `limit` is omitted |
-| `MODELS_PATH` | `./models` | Folder with the downloaded models; a relative path is read from the working directory |
-| `VLM_BACKEND` | `mlx` | `mlx` (Apple Silicon) or `transformers` |
+| `MODELS_PATH` | `./models` | Folder with the downloaded models; a relative path is read from the working directory; an empty value is refused |
+| `VLM_BACKEND` | `mlx` | `mlx` (the backend this project uses on Apple Silicon) or `transformers` |
 | `MAX_UPLOAD_MB` | `25` | Largest accepted upload, in megabytes (1 or more) |
 | `MAX_CONCURRENCY` | `1` | Documents converted at the same time (1 or more) |
 
@@ -442,7 +464,7 @@ models/              downloaded models (git-ignored)
 
 - **`src/formlens/`** — the service; the core modules above plus one package per feature
 - **`tests/`** — pytest suite, one test module per source module, with `conftest.py` and the probe routes of `probes.py`
-- **`scripts/`** — the OpenAPI export and the Schemathesis runner that the Makefile calls
+- **`scripts/`** — the OpenAPI export, the Schemathesis runner and `download_models.sh` (the pinned model download) that the Makefile calls
 - **`docs/`** — how-to guides, the problem type reference and the architecture notes
 
 ### 🧾 Important Configuration Files
@@ -476,8 +498,8 @@ models/              downloaded models (git-ignored)
 - **`make openapi-check` fails** — the API changed; run `make openapi` and commit `openapi.json`
 - **`make schemathesis` says the port is in use** — set `SCHEMATHESIS_PORT` to a free port
 - **`make api-breaking` skips the check** — `origin/main` has no `openapi.json` yet
-- **`make test-models` fails** — the pinned model is not in `MODELS_PATH`; run `make download-models` (with the same `VLM_BACKEND` and `MODELS_PATH`)
-- **`make download-models` says uvx is missing** — install [uv](https://docs.astral.sh/uv/), or set `HF_CLI` to another Hugging Face downloader
+- **`make test-models` fails** — the pinned model is not in `MODELS_PATH`; run `make download-models` with the same `VLM_BACKEND` and `MODELS_PATH`, exported or passed to `make` (neither command reads `.env`)
+- **`make download-models` says uvx is missing** — install [uv](https://docs.astral.sh/uv/), or set `HF_CLI` to another Hugging Face downloader (split on spaces; no space inside its path)
 - **Compose rejects `env_file`** — `required: false` needs Docker Compose 2.24 or newer
 - **The container ignores `ENVIRONMENT`, `HOST` or `PORT` from `.env`** — `make docker-run` and `compose.yaml` force them on purpose
 

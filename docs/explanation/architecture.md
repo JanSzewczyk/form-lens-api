@@ -27,8 +27,11 @@ each other's models. `make imports` enforces the contracts in `pyproject.toml`.
 
 The core has layers of its own: `__main__` (the only module that imports uvicorn), then the
 factory `main.py`, then the features (`health`, `middleware`, `openapi`, `logging_config`,
-`pagination`), then the foundations (`problems`, `config`, `query`, `types`). A layer imports only
-the layers below it. A new core module joins the contract in the layer it belongs to.
+`pagination`, `parsing`), then the foundations (`problems`, `config`, `query`, `types`), then
+`modelspec` (the pinned models, standard library only). A layer imports only the layers below it.
+`parsing` has layers of its own (router, dependencies, service, then slots, ports and models, then
+exceptions), and three more contracts keep the document stack (`docling`, `torch`, `transformers`,
+`mlx_vlm`, `PIL`) inside `parsing/docling_parser.py`, which only `main` imports. A new core module joins the contract in the layer it belongs to.
 
 ## Wiring
 
@@ -106,7 +109,7 @@ mlx-vlm and Pillow out of everything but the adapter, and the adapter out of eve
 ## Decisions
 
 - **Python 3.15 stays.** `docling[vlm]` installed on Python 3.15.2 and resolved and locked with
-  `uv sync --locked` (189 packages). The 3.14 fallback was not needed.
+  `uv sync --locked` (175 packages in `uv.lock`). The 3.14 fallback was not needed.
 - **Docling is a runtime dependency.** `docling[vlm]` and `python-multipart` are in
   `[project].dependencies` and locked. `import formlens.main` imports neither Docling nor torch: the
   adapter imports Docling inside `build_docling_parser`, and a test in a child interpreter checks
@@ -122,9 +125,13 @@ mlx-vlm and Pillow out of everything but the adapter, and the adapter out of eve
   path, reason and the `make download-models` hint) and stops the start; readiness (`model`) is 503
   until the parser exists. `build_docling_parser` checks the whole file list of the pinned model
   first, because Docling does not notice an incomplete folder and fails in the middle of a request.
-- **`document_timeout` is soft.** `PARSE_TIMEOUT_SECONDS` goes to Docling as `document_timeout`,
-  which is checked between pages: one slow page runs to its end. A timeout, a failure and a partial
-  success are all 500 `parse-failed`; an incomplete text is never returned.
+- **`document_timeout` is soft.** `PARSE_TIMEOUT_SECONDS` goes to Docling as `document_timeout`.
+  `VlmPipeline` checks it after each batch of `settings.perf.page_batch_size` pages (4 in docling
+  2.149.0, read from `docling/pipeline/vlm_pipeline.py`) and once after the last, so a long document
+  overshoots by up to a batch and a document that finishes over the budget fails too (measured: a
+  1 s budget failed a one-page PNG that took 1.59 s, and took 7.35 s on a 5-page PDF). A timeout, a
+  failure and a partial success are all 500 `parse-failed`; an incomplete text is never returned.
+  The log tells them apart by `conversion_status` (`partial_success` for a timeout).
 - **The body cap is a pure ASGI middleware.** A `Content-Length` over `MAX_UPLOAD_MB` is a 413 at
   once; a chunked body is counted and cut a megabyte past the limit; the service still checks the
   exact size. The middleware never raises from `receive`.
@@ -134,8 +141,12 @@ mlx-vlm and Pillow out of everything but the adapter, and the adapter out of eve
   a known signature that Docling cannot open is 400.
 - **A full parser answers 503, not a queue.** `ParseSlots` is a `BoundedSemaphore` taken without
   blocking; when every slot is taken the request gets 503 `parser-busy` with a constant
-  `Retry-After` of 5 seconds. A parallel test (`concurrency` marker) proves it, and two mutants of
-  the guard (no semaphore, a non-atomic counter) both fail it.
+  `Retry-After` of 5 seconds. A parallel test (`concurrency` marker) proves it. Removing the guard
+  fails it, and so does a non-atomic counter whose window a sleep widens (both run from a copy of the repository). A plain
+  `if free > 0: free -= 1` counter, with no widening, passed 20 of 20 runs on the GIL build: only the
+  free-threaded build can expose it, and that CI job is switched off. The 300-round test checks that no slot
+  leaks or is doubled, but a plain counter passes it on the GIL build; it is written for the
+  free-threaded one.
 - **The adapter writes a temporary file under a neutral name.** Docling logs the input file name at
   INFO; the adapter writes `upload.<ext>` into a fresh temporary folder, removed also on error.
   The loggers of Docling and its libraries are held at `WARNING`, and the redaction masks keys that
@@ -156,7 +167,9 @@ mlx-vlm and Pillow out of everything but the adapter, and the adapter out of eve
 - **Schemathesis fuzzes a fake-parser app.** `tests/schemathesis_app.py` builds the real app around
   a `FakeParser`; `scripts/run_schemathesis.sh` starts it with `uvicorn --factory`. The production
   code has no switch for it. The operation allows 415 for a schema-valid request, as Schemathesis
-  documents for a rejection the schema cannot express (the signature of a file).
+  documents for a rejection the schema cannot express (the signature of a file). Because of that
+  allowance Schemathesis never reaches a 200 here; `tests/parsing/test_contract.py` covers the 200, 413,
+  500 and 503 answers against the committed `openapi.json`.
 - **The core modules stay.** `pagination`, `query` and `types` have no caller yet; later list
   endpoints use them. `tests/probes.py` still serves the core tests.
 
@@ -177,4 +190,9 @@ mlx-vlm and Pillow out of everything but the adapter, and the adapter out of eve
 - **The `mlx-vlm` publisher is not confirmed by a person** (see [licenses](../licenses.md)).
 - **The free-threaded CI job is switched off**: the locked dependencies have no free-threaded wheels
   (`av`, `docling-parse`, pyarrow).
-- **`document_timeout` does not stop a single page** (see Decisions).
+- **`document_timeout` does not stop a batch of pages** (see Decisions): it is checked after each
+  batch of 4 pages, so it is a budget that is judged afterwards, not a deadline.
+- **The image's Docling and torch imports were never run.** `docker run --rm formlens:local python -c
+  "import docling.document_converter, torch"` is a step of the `docker` CI job and the first place
+  that proves the image can import them: the start-up check stops at `missing_model_files`, before
+  any Docling import. The step was written, never run (no Docker daemon here, and CI has not run it).

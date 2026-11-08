@@ -175,8 +175,12 @@ def test_exactly_as_many_callers_as_slots_get_in_when_eight_ask_at_once(
 def test_the_slots_are_whole_again_after_each_of_three_hundred_rounds_of_eight_callers(
     frequent_thread_switches: None,
 ) -> None:
-    """Many rounds on the same slots: a leaked or doubled slot shows in a later round, and a gap between
-    "is one free" and "take it" is hit by some round (on the free-threaded build; the GIL hides it)."""
+    """Many rounds on the same slots: a leaked or doubled slot shows in a later round.
+
+    This does NOT detect a plain non-atomic counter on the GIL build: `if free > 0: free -= 1` passed
+    20 of 20 runs of the shipped tests there (only a mutant whose window a sleep widens fails). A gap
+    between "is one free" and "take it" can be hit on the free-threaded build, whose CI job is switched off.
+    """
     outcomes = contend(ParseSlots(SLOTS), 8, rounds=300)
 
     assert outcomes == [(SLOTS, 8 - SLOTS, SLOTS)] * 300

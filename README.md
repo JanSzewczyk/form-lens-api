@@ -70,7 +70,7 @@ curl -F "file=@invoice.pdf" http://127.0.0.1:8000/v1/documents/parse
 
 - [![Ruff](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22ruff%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Ruff&logo=ruff&logoColor=white)](https://docs.astral.sh/ruff/) — format and lint, with security, async, logging and docstring rules
 - [![mypy](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22mypy%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=mypy)](https://mypy.readthedocs.io/) — `strict = true` with the Pydantic plugin and extra error codes, over `src`, `tests` and `scripts`
-- [![import-linter](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22import-linter%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=import-linter)](https://import-linter.readthedocs.io/) — contracts: the core is layered and only the entry point imports uvicorn
+- [![import-linter](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22import-linter%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=import-linter)](https://import-linter.readthedocs.io/) — five contracts: the core is layered, only the entry point imports uvicorn, only the Docling adapter imports Docling, torch, transformers, mlx-vlm or Pillow, only `main` imports that adapter, and `parsing` is layered inside
 - [![pytest](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22pytest%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=pytest&logo=pytest&logoColor=white)](https://docs.pytest.org/) — strict mode, warnings are errors, random order, 60 s timeout per test
 - [![coverage](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22coverage%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=coverage)](https://coverage.readthedocs.io/) — branch coverage of `src` and `scripts`, at least 95%
 - [![Hypothesis](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22hypothesis%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Hypothesis)](https://hypothesis.readthedocs.io/) — property-based tests
@@ -250,8 +250,10 @@ Measured on an Apple M1 Pro (10 cores: 8 performance and 2 efficiency, 32 GB, ma
 A page takes 1.2 to 1.8 s here, and the first request is only about 0.1 to 0.2 s slower than the
 next ones, because the model is loaded at start-up. These are the numbers of this one machine and
 backend; the `transformers` backend (the container's) has not been measured and is slower on a CPU.
-A document of many pages takes about that long per page, and `PARSE_TIMEOUT_SECONDS` is checked
-between pages only (it is not a hard stop inside one page). The `Retry-After` of a busy answer is a
+A document of many pages takes about that long per page, and `PARSE_TIMEOUT_SECONDS` is checked only
+after each batch of 4 pages (Docling's `page_batch_size`) and after the last one: a document can run
+past the budget by up to a batch, and one that finishes over the budget fails too (a one-page PNG that
+took 1.59 s failed with a 1 s budget). It is not a hard stop. The `Retry-After` of a busy answer is a
 constant 5 seconds: a one-page document frees its slot sooner, but a longer document does not, and
 nothing here measures the container's backend, so the constant stays.
 
@@ -320,7 +322,9 @@ Parsing answers with these errors (all Problem Details, see
 document the model cannot open), 413 `file-too-large`, 415 `unsupported-media-type`, 422
 `validation-error` (no `file`, an unknown `format`), 500 `parse-failed`, 503 `model-unavailable` and
 503 `parser-busy` with a `Retry-After` header. The file name and the content of a document are never
-logged; the log has one `document_parsed` line per request with the size, the page count and the time.
+logged; the log has one `document_parsed` line per document that reaches the parser (not for an empty, too
+large or unsupported file, a 422 or a busy answer), with the size, the page count and the time, and for
+a failure the cause type and the conversion status.
 
 ### 🚨 Errors
 
@@ -339,7 +343,8 @@ submitted value is never echoed. Clients branch on `type`. See
 }
 ```
 
-A 500 is answered by `UnhandledErrorMiddleware`, the innermost middleware, so it carries the
+A 500 is answered by `UnhandledErrorMiddleware`, which sits inside the request-context and CORS
+middleware (and outside the body cap), so it carries the
 `X-Request-ID` header and, when CORS is on, the CORS headers (checked against uvicorn). The body is
 the generic problem with the `request_id`; the traceback is logged once, on the `request_completed`
 line of that request, without local variables.
@@ -360,16 +365,17 @@ Known limits:
 ## 🧱 Architecture
 
 `main.py` only wires the app: settings, logging, problem handlers, the OpenAPI clean-up, readiness,
-the routers and three middleware (request context outermost, then CORS when it is on, then the 500
-answer). import-linter enforces the layers of the core, top to bottom:
+the routers and four middleware (request context outermost, then CORS when it is on, then the 500
+answer, then the upload body cap). import-linter enforces the layers of the core, top to bottom:
 
 ```mermaid
 flowchart TD
     entry["__main__ — entry point, the only module that imports uvicorn"]
     factory["main — create_app, wiring only"]
-    features["health · middleware · openapi · logging_config · pagination"]
+    features["health · middleware · openapi · logging_config · pagination · parsing"]
     foundations["problems · config · query · types"]
-    entry --> factory --> features --> foundations
+    spec["modelspec — the pinned models, standard library only"]
+    entry --> factory --> features --> foundations --> spec
 ```
 
 See [docs/explanation/architecture.md](docs/explanation/architecture.md) for why the layers are
@@ -446,7 +452,8 @@ Every key is optional. An invalid value stops the service at start-up instead of
 `MAX_UPLOAD_MB` is enforced twice: a body whose `Content-Length` is over the limit is refused with
 413 before it is read, and the service checks the exact size of the file. `MAX_CONCURRENCY` documents
 may be converted at the same time; the next request gets 503 `parser-busy` at once, nothing is queued.
-`PARSE_TIMEOUT_SECONDS` is passed to Docling as `document_timeout`, which is checked between pages.
+`PARSE_TIMEOUT_SECONDS` is passed to Docling as `document_timeout`, which is checked after each batch of 4
+pages, not inside one (see the timing above).
 
 ---
 
@@ -455,7 +462,7 @@ may be converted at the same time; the next request gets 503 `parser-busy` at on
 - **Docs and spec off** — `/docs`, `/redoc` and `/openapi.json` are served only with `DOCS_ENABLED=true`
 - **CORS off** — empty `CORS_ORIGINS` adds no CORS middleware; when on, credentials are not allowed
 - **Nothing echoed back** — validation errors return `loc`, `msg` and `type` but never the submitted value, and a 500 carries no exception details
-- **Redacted logs** — values under keys containing `password`, `token`, `authorization`, `api_key`, `secret` or `cookie` are logged as `***`; a safety net, not a licence to log secrets
+- **Redacted logs** — values under keys containing `password`, `token`, `authorization`, `api_key`, `secret`, `cookie`, `filename`, `file_name`, `content`, `markdown`, `plain_text` or `extracted_text` are logged as `***`; a safety net, not a licence to log secrets
 - **No `Server` header** — uvicorn's server header is turned off
 - **Hardened container** — the image runs as user `10001`, the virtual environment belongs to root, and `compose.yaml` adds a read-only filesystem, no capabilities and `no-new-privileges`
 - **Audited dependencies** — `make audit` runs pip-audit on every locked group, in CI on every pull request and weekly; Dependabot waits 7 days before proposing a new release
@@ -505,7 +512,7 @@ default). Behind a proxy, also set uvicorn's `FORWARDED_ALLOW_IPS`.
 `.github/workflows/ci.yml` runs on pushes to `main`, on pull requests, weekly and on demand:
 
 - `check` — `make check`, a coverage summary and the dependency audit; the only job of the weekly run
-- `api` — Spectral, oasdiff against `main` and Schemathesis (`make api-check`). Schemathesis fuzzes `tests/schemathesis_app.py`, the real app with a fake parser, started with `uvicorn --factory`, so no model is loaded
+- `api` — Spectral, oasdiff against `main` and Schemathesis (`make api-check`). Schemathesis fuzzes `tests/schemathesis_app.py`, the real app with a fake parser, started with `uvicorn --factory`, so no model is loaded (it never reaches a 200 under the 415 allowance; `tests/parsing/test_contract.py` checks the 200, 413, 500 and 503 answers against `openapi.json`)
 - `docker` — builds the image, runs it with an empty models folder and expects the documented start-up failure (a non-zero exit and `model_load_failed` in the output), then checks that `compose.yaml` is valid
 - `free-threaded` — the tests on free-threaded Python; informational, **switched off** (`if: false`) because the locked dependencies have no free-threaded wheels (`av`, `docling-parse`, pyarrow)
 

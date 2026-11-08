@@ -82,7 +82,9 @@ jobs:
             --volume "$RUNNER_TEMP/empty-models:/models:ro" --env MODELS_PATH=/models \
             formlens:local > "$RUNNER_TEMP/start.log" 2>&1 || status=$?
           cat "$RUNNER_TEMP/start.log"
-          test "$status" -ne 0 && test "$status" -ne 124 # failed on its own, did not hang until the timeout
+          # Separate lines: under `bash -e` a failed `test` in the middle of an `&&` list does not stop the step.
+          test "$status" -ne 0 # it failed
+          test "$status" -ne 124 # on its own, not by hanging until the timeout
           grep --quiet model_load_failed "$RUNNER_TEMP/start.log"
       - run: docker compose config --quiet # compose.yaml is valid, with its defaults
 

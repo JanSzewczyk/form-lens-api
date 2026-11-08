@@ -234,7 +234,7 @@ The small model sometimes repeats a line of a page; do not expect the text to eq
 
 ### ⏱ How long a page takes
 
-Measured on an Apple M1 Pro (10 cores, 32 GB, macOS 27.2), `VLM_BACKEND=mlx`, model revision
+Measured on an Apple M1 Pro (10 cores: 8 performance and 2 efficiency, 32 GB, macOS 27.2), `VLM_BACKEND=mlx`, model revision
 `e9939db25d2f296c8678d0491c4609a8c596c50a` (`ibm-granite/granite-docling-258M-mlx`),
 `make run` and `curl`, one request at a time, one-page synthetic documents of `tests/data/`
 (520 x 160 px images, a one-page PDF):
@@ -486,7 +486,10 @@ checks only this start-up failure. The Linux install pulls the CUDA build of `to
 
 `compose.yaml` reads `.env` through `env_file` with `required: false`, which needs Docker Compose
 2.24 or newer. `make docker-run` and `compose.yaml` force `ENVIRONMENT=production`, `HOST`, `PORT`,
-`VLM_BACKEND` and `MODELS_PATH`; everything else comes from your `.env`.
+`VLM_BACKEND` and `MODELS_PATH` (inside the container); everything else comes from your `.env`. The
+host folder that is mounted is chosen differently: Compose reads `MODELS_PATH` from your `.env` (or
+the shell) for the mount, but `make docker-run` reads it from the shell or the `make` command line
+only (`make docker-run MODELS_PATH=/data/models`), not from `.env`.
 
 Run one worker and one replica. Anything the app keeps in memory is per process, so a second
 worker or replica would not see it.

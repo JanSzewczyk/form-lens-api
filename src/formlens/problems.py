@@ -148,14 +148,16 @@ def domain_error_handler(
     The mapping keeps domain exceptions free of HTTP: the domain raises, this turns it into a
     problem with its own type. A refusal (4xx) is expected, so it is a warning without a traceback;
     a failure of the service (5xx) is an error. An exception that carries a whole-second
-    `retry_after_seconds` makes the response say when to try again, in a `Retry-After` header.
+    `retry_after_seconds` makes the response say when to try again, in a `Retry-After` header; a 503 with one is
+    load shedding (a full parser), expected under load, so it is a warning like any other refusal.
     """
 
     async def handle(request: Request, exc: Exception) -> Response:
         kind = next(mapping[cls] for cls in type(exc).__mro__ if cls in mapping)
         retry_after = _retry_after_seconds(exc)
         headers = {"Retry-After": str(retry_after)} if retry_after is not None else None
-        if kind.status >= HTTPStatus.INTERNAL_SERVER_ERROR:
+        shed = kind.status == HTTPStatus.SERVICE_UNAVAILABLE and retry_after is not None
+        if kind.status >= HTTPStatus.INTERNAL_SERVER_ERROR and not shed:
             log.error("request_failed", problem=kind.slug, status=kind.status)
         else:
             log.warning("request_refused", problem=kind.slug, status=kind.status)

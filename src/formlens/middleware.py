@@ -3,6 +3,7 @@
 import re
 import time
 import uuid
+from http import HTTPStatus
 from typing import Final
 
 import structlog
@@ -54,13 +55,16 @@ class RequestContextMiddleware:
 
         status = 500  # stays 500 when the exception escapes before any response is sent
         escaped: str | None = None  # type of an exception that left the application
+        shed = False  # a 503 that tells the client when to retry is load shedding, not a failure
         started = time.perf_counter()
 
         async def send_with_request_id(message: Message) -> None:
-            nonlocal status
+            nonlocal status, shed
             if message["type"] == "http.response.start":
                 status = message["status"]
-                MutableHeaders(scope=message)[REQUEST_ID_HEADER] = request_id
+                headers = MutableHeaders(scope=message)
+                headers[REQUEST_ID_HEADER] = request_id
+                shed = status == HTTPStatus.SERVICE_UNAVAILABLE and "Retry-After" in headers
             await send(message)
 
         try:
@@ -81,11 +85,13 @@ class RequestContextMiddleware:
                 # traceback of an exception that escapes; this line only flags the request.
                 fields["aborted_by"] = escaped
                 log.error("request_completed", **fields)
-            elif status >= 500:
+            elif status >= 500 and not shed:
                 # The traceback of an unhandled error is logged here, on the one line per request.
                 if _UNHANDLED_KEY in state:
                     fields["exc_info"] = state[_UNHANDLED_KEY]
                 log.error("request_completed", **fields)
+            elif status >= 500:
+                log.warning("request_completed", **fields)
             else:
                 log.info("request_completed", **fields)
 
@@ -94,10 +100,11 @@ class UnhandledErrorMiddleware:
     """Answer an exception no handler claimed with the generic 500 problem.
 
     Starlette's own catch-all runs outside every user middleware, so its response would carry
-    neither `X-Request-ID` nor CORS headers. This middleware is the innermost one, so the response
-    it sends passes through both. It records the exception in the request state and leaves the
-    logging to `RequestContextMiddleware`, so the traceback is logged once and the server does not
-    log it again. A response that has already started cannot be replaced: that exception escapes.
+    neither `X-Request-ID` nor CORS headers. This middleware sits inside the request-context and CORS
+    middleware, so the response it sends passes through both; only the body cap is inside it, closest
+    to the routes. It records the exception in the request state and leaves the logging to
+    `RequestContextMiddleware`, so the traceback is logged once and the server does not log it again.
+    A response that has already started cannot be replaced: that exception escapes.
     """
 
     def __init__(self, app: ASGIApp) -> None:

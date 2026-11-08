@@ -352,3 +352,25 @@ def test_a_service_failure_is_logged_as_an_error_and_a_refusal_as_a_warning(
     failed = next(event for event in events if event["event"] == "request_failed")
     assert (failed["problem"], failed["status"]) == ("probe-broken", 500)
     assert "exception" not in failed
+
+
+def test_a_503_that_says_when_to_retry_is_a_warning_in_both_log_lines_and_a_503_that_does_not_is_an_error(
+    probe_app: FastAPI, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Load shedding is expected under load; a service that is down is not."""
+    shed = raise_on_get(probe_app, "/probe/shed", Busy(5), {Busy: BUSY})
+    down = raise_on_get(probe_app, "/probe/down", Busy(None), {Busy: BUSY})
+
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith("{")]
+    by_request = {
+        (e["request_id"], e["event"]): e["level"]
+        for e in events
+        if e["event"] in {"request_failed", "request_refused", "request_completed"}
+    }
+    shed_id, down_id = shed.headers["X-Request-ID"], down.headers["X-Request-ID"]
+    assert (shed.status_code, down.status_code) == (503, 503)
+    assert by_request[shed_id, "request_refused"] == "warning"
+    assert by_request[shed_id, "request_completed"] == "warning"
+    assert (shed_id, "request_failed") not in by_request
+    assert by_request[down_id, "request_failed"] == "error"
+    assert by_request[down_id, "request_completed"] == "error"

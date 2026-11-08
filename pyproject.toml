@@ -138,6 +138,7 @@ layers = [
     "formlens.main",
     "formlens.health | formlens.middleware | formlens.openapi | formlens.logging_config | formlens.pagination",
     "formlens.problems | formlens.config | formlens.query | formlens.types",
+    "formlens.modelspec",
 ]
 
 [[tool.importlinter.contracts]]
@@ -149,6 +150,7 @@ source_modules = [
     "formlens.health",
     "formlens.logging_config",
     "formlens.middleware",
+    "formlens.modelspec",
     "formlens.openapi",
     "formlens.pagination",
     "formlens.problems",

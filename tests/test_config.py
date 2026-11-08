@@ -12,7 +12,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
-from formlens.config import Settings, get_settings
+from formlens.config import ModelSettings, Settings, get_settings
 from formlens.main import create_app
 from tests.conftest import make_settings
 
@@ -300,3 +300,61 @@ def test_the_service_refuses_to_start_on_an_invalid_model_setting(tmp_path: Path
 
     assert result.returncode != 0
     assert "vlm_backend" in result.stderr
+
+
+# --- ModelSettings: the two settings the service and the downloader share -------------------------
+
+
+def test_settings_are_model_settings_with_the_same_two_fields_and_defaults() -> None:
+    models = ModelSettings(_env_file=None)
+    settings = Settings(_env_file=None)
+
+    assert isinstance(settings, ModelSettings)
+    assert set(ModelSettings.model_fields) == {"models_path", "vlm_backend"}
+    assert (models.models_path, models.vlm_backend) == (Path("models"), "mlx")
+    assert (settings.models_path, settings.vlm_backend) == (models.models_path, models.vlm_backend)
+
+
+def test_model_settings_ignore_an_unrelated_bad_value_in_the_env_file(tmp_path: Path) -> None:
+    """A `.env` with `PORT=abc` stops the service, but it must not stop `make download-models`."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("PORT=abc\nVLM_BACKEND=transformers\nMODELS_PATH=weights\n", encoding="utf-8")
+
+    models = ModelSettings(_env_file=env_file)
+
+    assert (models.vlm_backend, models.models_path) == ("transformers", Path("weights"))
+    with pytest.raises(ValidationError, match="port"):
+        Settings(_env_file=env_file)
+
+
+def test_model_settings_read_the_dot_env_of_the_working_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".env").write_text("VLM_BACKEND=transformers\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert ModelSettings().vlm_backend == "transformers"
+    assert Settings().vlm_backend == "transformers"
+
+
+def test_the_environment_beats_the_env_file_for_the_model_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".env").write_text("VLM_BACKEND=transformers\nMODELS_PATH=from-file\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("VLM_BACKEND", "mlx")
+
+    models = ModelSettings()
+
+    assert (models.vlm_backend, models.models_path) == ("mlx", Path("from-file"))
+
+
+def test_model_settings_refuse_an_empty_models_path() -> None:
+    with pytest.raises(ValidationError, match="must not be empty; unset it to use 'models'"):
+        ModelSettings(_env_file=None, models_path="")  # type: ignore[arg-type]  # a text: the empty value must be refused
+
+
+@pytest.mark.parametrize("backend", ["cuda", "MLX", "", " mlx"], ids=["unknown", "wrong-case", "empty", "padded"])
+def test_model_settings_refuse_an_unknown_backend(backend: str) -> None:
+    with pytest.raises(ValidationError, match="vlm_backend"):
+        ModelSettings(_env_file=None, vlm_backend=backend)  # type: ignore[arg-type]  # the point of the test

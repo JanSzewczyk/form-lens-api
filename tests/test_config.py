@@ -21,6 +21,15 @@ def test_defaults_are_safe_for_a_public_api() -> None:
     assert settings.log_level == "INFO"
 
 
+def test_model_settings_default_to_the_local_apple_silicon_setup() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.models_path == Path("models")
+    assert settings.vlm_backend == "mlx"
+    assert settings.max_upload_mb == 25
+    assert settings.max_concurrency == 1
+
+
 def test_a_copied_env_example_keeps_the_docs_off_in_production() -> None:
     """`cp .env.example .env` is the documented first step; it must not publish /docs."""
     settings = Settings(_env_file=ENV_EXAMPLE, environment="production")
@@ -38,18 +47,34 @@ def test_environment_variables_override_defaults(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("PORT", "9100")
     monkeypatch.setenv("DOCS_ENABLED", "true")
     monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
+    monkeypatch.setenv("MODELS_PATH", "/srv/models")
+    monkeypatch.setenv("VLM_BACKEND", "transformers")
+    monkeypatch.setenv("MAX_UPLOAD_MB", "5")
+    monkeypatch.setenv("MAX_CONCURRENCY", "2")
 
     settings = Settings(_env_file=None)
 
     assert settings.port == 9100
     assert settings.docs_enabled is True
     assert settings.cors_origins == ["https://app.example.com"]
+    assert settings.models_path == Path("/srv/models")
+    assert settings.vlm_backend == "transformers"
+    assert settings.max_upload_mb == 5
+    assert settings.max_concurrency == 2
 
 
 @pytest.mark.parametrize(
     ("field", "value"),
-    [("log_level", "LOUD"), ("environment", "staging"), ("port", 0), ("default_page_size", 101)],
-    ids=["log-level", "environment", "port", "page-size"],
+    [
+        ("log_level", "LOUD"),
+        ("environment", "staging"),
+        ("port", 0),
+        ("default_page_size", 101),
+        ("vlm_backend", "cuda"),
+        ("max_concurrency", 0),
+        ("max_upload_mb", 0),
+    ],
+    ids=["log-level", "environment", "port", "page-size", "vlm-backend", "max-concurrency", "max-upload-mb"],
 )
 def test_invalid_values_are_rejected(field: str, value: object) -> None:
     with pytest.raises(ValidationError, match=field):

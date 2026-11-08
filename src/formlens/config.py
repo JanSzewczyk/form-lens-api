@@ -1,5 +1,6 @@
 """Application settings loaded from environment variables."""
 
+from pathlib import Path
 from typing import Literal, cast
 
 from fastapi import Request
@@ -9,6 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 type Environment = Literal["local", "test", "production"]
 type LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 type LogFormat = Literal["auto", "json", "console"]
+type VlmBackend = Literal["mlx", "transformers"]
 
 
 class Settings(BaseSettings):
@@ -50,6 +52,19 @@ class Settings(BaseSettings):
 
     default_page_size: int = Field(
         default=20, ge=1, le=100, description="Page size when a list request gives no limit."
+    )
+
+    models_path: Path = Field(
+        default=Path("models"),
+        description="Folder with the downloaded document models; a relative path is read from the working directory.",
+    )
+    vlm_backend: VlmBackend = Field(
+        default="mlx",
+        description="Inference backend of the document model: `mlx` (Apple Silicon) or `transformers`.",
+    )
+    max_upload_mb: int = Field(default=25, ge=1, description="Largest accepted upload, in megabytes.")
+    max_concurrency: int = Field(
+        default=1, ge=1, description="Documents converted at the same time; the model is heavy, so keep it low."
     )
 
     @property

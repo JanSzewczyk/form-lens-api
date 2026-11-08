@@ -31,21 +31,24 @@ model has been run (Stage 0 launch test, see below).
 
 ## Libraries
 
-Docling and its VLM dependencies are **not** in `pyproject.toml` or `uv.lock` yet (Stage 0 ships no
-parsing code). The versions below are those a scratch environment resolved on 2026-11-08 for
-`docling[vlm]` on Python 3.15.2, macOS arm64, and that `uv add 'docling[vlm]'` also resolved against
-this project's `requires-python`. Stage 1 locks them and updates this table.
+Docling (`docling[vlm]`) and `python-multipart` are runtime dependencies in `pyproject.toml`, and
+`uv.lock` records the versions below. They are the versions a scratch environment resolved on
+2026-11-08 for `docling[vlm]` on Python 3.15.2, macOS arm64, and that `uv add` locked against this
+project's `requires-python`. `docling` itself is a thin package: the code lives in `docling-slim`
+(MIT), which it pulls in with the `standard` and `models-vlm-inline` extras.
 
 | Package | Version tried | Licence declared in the package metadata | Status |
 | --- | --- | --- | --- |
 | [docling](https://github.com/docling-project/docling) | 2.149.0 | MIT | Metadata only; licence file not read |
+| docling-slim | 2.149.0 | MIT | Metadata only; the package that holds Docling's code |
 | docling-core | 2.106.0 | MIT | Metadata only |
 | docling-ibm-models | 4.0.4 | MIT | Metadata only |
 | docling-parse | 7.24.2 | MIT | Metadata only |
 | [mlx](https://github.com/ml-explore/mlx) | 0.32.4 | MIT | **Unverified**: metadata only, PyPI page and licence file not read |
-| [mlx-vlm](https://pypi.org/project/mlx-vlm/) | 0.7.12 | MIT | **Unverified**: metadata only. PyPI `project_urls` give `Repository: https://github.com/Neywa-Labs/mlx-vlm` and `Homepage: https://www.neywalabs.ai`. Confirm who publishes it, and that it is the project meant, before Stage 1 adds it |
+| [mlx-vlm](https://pypi.org/project/mlx-vlm/) | 0.7.12 | MIT | **Unverified**: metadata only. PyPI `project_urls` give `Repository: https://github.com/Neywa-Labs/mlx-vlm` and `Homepage: https://www.neywalabs.ai`. It is locked now (Docling's `vlm` extra pulls it in on macOS arm64), but nobody has confirmed who publishes it or that it is the project meant |
 | [torch](https://pytorch.org) | 2.15.0 | Apache-2.0 AND Apache-2.0 WITH LLVM-exception AND BSD-2-Clause AND BSD-3-Clause AND BSL-1.0 AND ISC AND MIT AND Zlib | **Unverified**: metadata only |
 | [transformers](https://github.com/huggingface/transformers) | 5.22.2 | Apache-2.0 | **Unverified**: metadata only |
+| [python-multipart](https://github.com/Kludex/python-multipart) | 0.0.33 | Apache-2.0 | Metadata only; FastAPI needs it to read an upload |
 | huggingface-hub (Docling's environment) | 1.33.0 | Apache-2.0 | Metadata only |
 
 ### The downloader
@@ -78,7 +81,7 @@ Nobody has done these yet; they are for a person, not a script:
 
 - Read both model cards (not only the front matter) and the Apache-2.0 text for the pinned
   revisions, and confirm no use restriction applies to this service.
-- Confirm the publisher of `mlx-vlm` (see its row) before Stage 1 adds it.
+- Confirm the publisher of `mlx-vlm` (see its row); it is already in `uv.lock`.
 - Decide whether the downloader's environment stays outside `uv.lock` (see
   [The downloader](#the-downloader)).
 - Read the licence of every package marked **Unverified**, and of the transitive dependencies

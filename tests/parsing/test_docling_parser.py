@@ -134,6 +134,7 @@ class TestParse:
 
         assert status in str(failed.value.__cause__)
         assert failed.value.conversion_status == status
+        assert type(failed.value.__cause__).__name__ == "ConversionIncomplete"  # logged as `cause_type`: no `_`
         assert result.document.exported == []  # a partial text is never exported
         assert list(tmp_path.iterdir()) == []
 

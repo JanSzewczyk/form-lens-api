@@ -3,7 +3,6 @@
 import re
 import time
 import uuid
-from http import HTTPStatus
 from typing import Final
 
 import structlog
@@ -13,7 +12,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from formlens.problems import problem, unhandled_problem
+from formlens.problems import LOAD_SHED_KEY, problem, unhandled_problem
 
 REQUEST_ID_HEADER: Final = "X-Request-ID"
 _VALID_REQUEST_ID: Final = re.compile(r"[A-Za-z0-9._-]{1,64}")
@@ -55,16 +54,13 @@ class RequestContextMiddleware:
 
         status = 500  # stays 500 when the exception escapes before any response is sent
         escaped: str | None = None  # type of an exception that left the application
-        shed = False  # a 503 that tells the client when to retry is load shedding, not a failure
         started = time.perf_counter()
 
         async def send_with_request_id(message: Message) -> None:
-            nonlocal status, shed
+            nonlocal status
             if message["type"] == "http.response.start":
                 status = message["status"]
-                headers = MutableHeaders(scope=message)
-                headers[REQUEST_ID_HEADER] = request_id
-                shed = status == HTTPStatus.SERVICE_UNAVAILABLE and "Retry-After" in headers
+                MutableHeaders(scope=message)[REQUEST_ID_HEADER] = request_id
             await send(message)
 
         try:
@@ -85,12 +81,13 @@ class RequestContextMiddleware:
                 # traceback of an exception that escapes; this line only flags the request.
                 fields["aborted_by"] = escaped
                 log.error("request_completed", **fields)
-            elif status >= 500 and not shed:
+            elif status >= 500 and not state.get(LOAD_SHED_KEY, False):
                 # The traceback of an unhandled error is logged here, on the one line per request.
                 if _UNHANDLED_KEY in state:
                     fields["exc_info"] = state[_UNHANDLED_KEY]
                 log.error("request_completed", **fields)
             elif status >= 500:
+                # Load shedding: a domain error with `retry_after_seconds` was answered with 503.
                 log.warning("request_completed", **fields)
             else:
                 log.info("request_completed", **fields)

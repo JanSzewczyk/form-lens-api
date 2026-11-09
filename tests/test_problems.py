@@ -374,3 +374,21 @@ def test_a_503_that_says_when_to_retry_is_a_warning_in_both_log_lines_and_a_503_
     assert (shed_id, "request_failed") not in by_request
     assert by_request[down_id, "request_failed"] == "error"
     assert by_request[down_id, "request_completed"] == "error"
+
+
+def test_a_503_with_a_retry_after_header_that_no_domain_error_asked_for_stays_an_error(
+    probe_app: FastAPI, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Only a domain error that carries `retry_after_seconds` is load shedding; a bare header is not."""
+
+    @probe_app.get("/probe/maintenance", operation_id="get_probe_maintenance")
+    def maintenance() -> None:
+        raise HTTPException(503, "down for maintenance", headers={"Retry-After": "30"})
+
+    response = TestClient(probe_app).get("/probe/maintenance")
+
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith("{")]
+    [completed] = [e for e in events if e["event"] == "request_completed"]
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "30"
+    assert completed["level"] == "error"

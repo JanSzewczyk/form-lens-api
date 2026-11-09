@@ -18,6 +18,9 @@ PROBLEM_MEDIA_TYPE: Final = "application/problem+json"
 PROBLEM_TYPE_PREFIX: Final = "urn:problem:formlens:"
 _HTTP_METHODS: Final = frozenset({"get", "put", "post", "delete", "patch", "head", "options"})
 _UNHANDLED_DETAIL: Final = "The server failed to process the request."
+# Set in the request state by `domain_error_handler` for a 503 that says when to retry; the request
+# log line reads it, so only a domain error that asked for it is load shedding, never a bare header.
+LOAD_SHED_KEY: Final = "load_shed"
 _FASTAPI_BODY_PARSE_DETAIL: Final = "There was an error parsing the body"  # fastapi/routing.py
 
 log = structlog.get_logger(__name__)
@@ -157,6 +160,8 @@ def domain_error_handler(
         retry_after = _retry_after_seconds(exc)
         headers = {"Retry-After": str(retry_after)} if retry_after is not None else None
         shed = kind.status == HTTPStatus.SERVICE_UNAVAILABLE and retry_after is not None
+        if shed:
+            request.scope.setdefault("state", {})[LOAD_SHED_KEY] = True
         if kind.status >= HTTPStatus.INTERNAL_SERVER_ERROR and not shed:
             log.error("request_failed", problem=kind.slug, status=kind.status)
         else:

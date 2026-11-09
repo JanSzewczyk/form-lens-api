@@ -64,8 +64,8 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
 
 ## Gotchas
 
-- The uv version is pinned twice: the `uv` image in `Dockerfile` and `UV_VERSION` in
-  `.github/workflows/ci.yml` (`tests/test_tooling.py` checks they match). Dependabot does not
+- The uv version is pinned three times: the `uv` image in `Dockerfile` and `UV_VERSION` in
+  `.github/workflows/ci.yml` and `release.yml` (`tests/test_tooling.py` checks they match). Dependabot does not
   bump the Spectral, oasdiff and pip-audit pins in `Makefile`.
 - `README.md` must name every make target (`tests/test_docs.py`).
 - The model downloader is pinned in `scripts/download_models.sh` (`uvx --from huggingface_hub==2.4.0 hf`).

@@ -22,6 +22,9 @@ def test_the_uv_version_is_the_same_in_the_dockerfile_and_ci() -> None:
     versions = {
         "Dockerfile": pinned("Dockerfile", r"^FROM ghcr\.io/astral-sh/uv:(?P<version>[\d.]+) "),
         ".github/workflows/ci.yml": pinned(".github/workflows/ci.yml", r'^  UV_VERSION: "(?P<version>[\d.]+)"'),
+        ".github/workflows/release.yml": pinned(
+            ".github/workflows/release.yml", r'^  UV_VERSION: "(?P<version>[\d.]+)"'
+        ),
     }
 
     assert len(set(versions.values())) == 1, versions

@@ -109,7 +109,7 @@ mlx-vlm and Pillow out of everything but the adapter, and the adapter out of eve
 ## Decisions
 
 - **Python 3.15 stays.** `docling[vlm]` installed on Python 3.15.2 and resolved and locked with
-  `uv sync --locked` (175 packages in `uv.lock`). The 3.14 fallback was not needed.
+  `uv sync --locked` (186 packages in `uv.lock`, the release group included). The 3.14 fallback was not needed.
 - **Docling is a runtime dependency.** `docling[vlm]` and `python-multipart` are in
   `[project].dependencies` and locked. `import formlens.main` imports neither Docling nor torch: the
   adapter imports Docling inside `build_docling_parser`, and a test in a child interpreter checks

@@ -149,8 +149,10 @@ mlx-vlm and Pillow out of everything but the adapter, and the adapter out of eve
   free-threaded one.
 - **The adapter writes a temporary file under a neutral name.** Docling logs the input file name at
   INFO; the adapter writes `upload.<ext>` into a fresh temporary folder, removed also on error.
-  The loggers of Docling and its libraries are held at `WARNING`, and the redaction masks keys that
-  could hold a document or its name.
+  The loggers of Docling and its libraries are held at `WARNING`; the multipart parser's
+  (`python_multipart`, `multipart`) at `ERROR`, because at `WARNING` it quotes a byte of a malformed
+  body (`_BODY_LOGGERS` in `logging_config.py`). The redaction masks keys that could hold a document
+  or its name.
 - **The model pins and the two model settings have one source each.** `src/formlens/modelspec.py`
   holds the repository, revision and file list per backend. `ModelSettings` in `config.py` holds
   `MODELS_PATH` and `VLM_BACKEND`; `Settings` inherits it, and `scripts/resolve_model.py` reads it
@@ -194,5 +196,6 @@ mlx-vlm and Pillow out of everything but the adapter, and the adapter out of eve
   batch of 4 pages, so it is a budget that is judged afterwards, not a deadline.
 - **The image's Docling and torch imports were never run.** `docker run --rm formlens:local python -c
   "import docling.document_converter, torch"` is a step of the `docker` CI job and the first place
-  that proves the image can import them: the start-up check stops at `missing_model_files`, before
+  that proves the image can import them (it runs without `--read-only`, `--tmpfs` and the models
+  mount, so a failure that only the read-only container causes stays hidden): the start-up check stops at `missing_model_files`, before
   any Docling import. The step was written, never run (no Docker daemon here, and CI has not run it).

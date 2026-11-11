@@ -90,7 +90,7 @@ class ExtractionProcessor:
             # No slot is free: this was not an attempt, so the job goes back and the attempt is given back.
             self._repository.release_if_running(claimed.requeue_busy(), claimed_attempts=claimed.attempts)
         except Exception as exc:  # noqa: BLE001 - a port is trusted to translate; an unknown error ends the job
-            self._after_failure(claimed, self._reason_of(exc), cause=type(exc).__name__)
+            self._after_failure(claimed, self._reason_of(exc), cause=self._cause_of(exc))
         else:
             self._finish(claimed.complete(result, self._clock()), claimed)
         return True
@@ -101,6 +101,12 @@ class ExtractionProcessor:
         if len(text) > self._config.max_input_chars:
             raise DocumentTooLong
         return self._extractor.extract(text, claimed.template)
+
+    @staticmethod
+    def _cause_of(exc: Exception) -> str:
+        """Name the cause for the log: the type a port gave, else the class of the error. Never its message."""
+        given = getattr(exc, "cause_type", None)
+        return given if isinstance(given, str) else type(exc).__name__
 
     @staticmethod
     def _reason_of(exc: Exception) -> FailureReason:

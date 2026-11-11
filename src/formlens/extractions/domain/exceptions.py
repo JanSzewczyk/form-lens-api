@@ -73,7 +73,16 @@ class InvalidTransition(ValueError):
 
 
 class JobError(Exception):
-    """A port failed while a job ran. The subclasses decide whether the job is retried."""
+    """A port failed while a job ran. The subclasses decide whether the job is retried.
+
+    `cause_type` names what went wrong in a word or a class name (`timeout`, `ConnectError`, `schema`). It is
+    for the log and never holds text of the document, a value or a library's message.
+    """
+
+    def __init__(self, cause_type: str | None = None) -> None:
+        """Keep the type of the cause."""
+        super().__init__(self.__doc__.splitlines()[0] if self.__doc__ else "The job failed.")
+        self.cause_type = cause_type
 
 
 class FileUnreadable(JobError):
@@ -98,6 +107,18 @@ class InvalidOutput(JobError):
 
 class DocumentTooLong(JobError):
     """The document text is longer than the model may be given. Retrying cannot help."""
+
+
+class JobAborted(Exception):  # a condition, like TimeoutError
+    """A job ended with something that is not an `Exception` (`SystemExit`, `KeyboardInterrupt`).
+
+    The runner reports it as an ordinary error, so it neither stops the worker's thread nor goes unseen.
+    """
+
+    def __init__(self, cause_type: str) -> None:
+        """Name the type of what ended the job, never its message."""
+        super().__init__(f"The job ended with {cause_type}.")
+        self.cause_type = cause_type
 
 
 class DeadlineExceeded(Exception):  # a condition, like TimeoutError

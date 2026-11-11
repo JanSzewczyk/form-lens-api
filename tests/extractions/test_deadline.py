@@ -1,11 +1,12 @@
 """The thread-based deadline: results, errors, and the memory of a job that was given up on."""
 
 import threading
+from collections.abc import Callable
 
 import pytest
 
 from formlens.extractions.adapters.deadline import ThreadDeadline
-from formlens.extractions.domain.exceptions import DeadlineExceeded
+from formlens.extractions.domain.exceptions import DeadlineExceeded, JobAborted
 from tests.extractions.harness import wait_until
 
 
@@ -52,3 +53,26 @@ def test_the_job_runs_on_a_daemon_thread_so_a_job_that_never_ends_cannot_hold_th
     ThreadDeadline().run(look, 5)
 
     assert seen == [True]
+
+
+def exit_the_job() -> int:
+    raise SystemExit(3)
+
+
+def interrupt_the_job() -> int:
+    raise KeyboardInterrupt
+
+
+@pytest.mark.parametrize(
+    ("job", "name"), [(exit_the_job, "SystemExit"), (interrupt_the_job, "KeyboardInterrupt")], ids=["exit", "interrupt"]
+)
+def test_an_exit_or_an_interrupt_in_the_job_is_an_ordinary_error_that_names_its_type(
+    job: Callable[[], int], name: str
+) -> None:
+    deadline = ThreadDeadline()
+
+    with pytest.raises(JobAborted) as raised:
+        deadline.run(job, 5)
+
+    assert raised.value.cause_type == name
+    assert deadline.busy() is False  # and this test process is still running

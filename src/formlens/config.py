@@ -19,7 +19,7 @@ type LogFormat = Literal["auto", "json", "console"]
 _DOCKER_HOST: Final = "host.docker.internal"
 
 
-def _is_local_host(host: str) -> bool:
+def is_local_host(host: str) -> bool:
     """Tell whether `host` is a machine of the operator's own: loopback, a private address or a plain name.
 
     A document is sent to this host, so it must not be somebody else's server: a private or loopback
@@ -33,6 +33,31 @@ def _is_local_host(host: str) -> bool:
     except ValueError:
         return "." not in host
     return address.is_loopback or address.is_private
+
+
+def require_local_model_url(value: str) -> str:
+    """Return `value` if it is an http(s) URL of a local model server, else raise `ValueError`.
+
+    The settings call it, and so does the model client when it is built, so a client made by hand with
+    another URL is refused too: a document must not be sent to somebody else's server.
+    """
+    try:
+        parts = urlsplit(value)
+        host = parts.hostname
+        _ = parts.port  # a port that is not a number raises here
+    except ValueError as exc:
+        msg = "must be an http(s) URL with a host, for example http://localhost:11434/v1"
+        raise ValueError(msg) from exc
+    if parts.scheme not in {"http", "https"} or not host:
+        msg = "must be an http(s) URL with a host, for example http://localhost:11434/v1"
+        raise ValueError(msg)
+    if parts.username is not None or parts.password is not None:
+        msg = "must not contain a user name or password"
+        raise ValueError(msg)
+    if not is_local_host(host):
+        msg = "must point to a loopback or private address, a name without a dot or host.docker.internal"
+        raise ValueError(msg)
+    return value
 
 
 class ModelSettings(BaseSettings):
@@ -175,23 +200,7 @@ class Settings(ModelSettings):
     @classmethod
     def _require_a_local_model_server(cls, value: str) -> str:
         """Refuse an endpoint that is not on this machine or its private network, and a URL with credentials."""
-        try:
-            parts = urlsplit(value)
-            host = parts.hostname
-            _ = parts.port  # a port that is not a number raises here
-        except ValueError as exc:
-            msg = "must be an http(s) URL with a host, for example http://localhost:11434/v1"
-            raise ValueError(msg) from exc
-        if parts.scheme not in {"http", "https"} or not host:
-            msg = "must be an http(s) URL with a host, for example http://localhost:11434/v1"
-            raise ValueError(msg)
-        if parts.username is not None or parts.password is not None:
-            msg = "must not contain a user name or password"
-            raise ValueError(msg)
-        if not _is_local_host(host):
-            msg = "must point to a loopback or private address, a name without a dot or host.docker.internal"
-            raise ValueError(msg)
-        return value
+        return require_local_model_url(value)
 
     @model_validator(mode="after")
     def _order_the_timeouts(self) -> Self:

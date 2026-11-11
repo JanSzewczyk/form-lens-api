@@ -165,7 +165,7 @@ layers = [
     "formlens.extractions",
     "formlens.health | formlens.middleware | formlens.openapi | formlens.logging_config | formlens.parsing | formlens.templates",
     "formlens.pagination | formlens.database",
-    "formlens.problems | formlens.config | formlens.query | formlens.types",
+    "formlens.problems | formlens.config | formlens.query | formlens.types | formlens.patterns",
     "formlens.modelspec",
 ]
 
@@ -185,6 +185,7 @@ source_modules = [
     "formlens.openapi",
     "formlens.pagination",
     "formlens.parsing",
+    "formlens.patterns",
     "formlens.problems",
     "formlens.query",
     "formlens.templates",
@@ -207,6 +208,16 @@ ignore_imports = [
     "formlens.templates.tables -> sqlalchemy",
     "formlens.extractions.adapters.tables -> sqlalchemy",
     "formlens.extractions.adapters.sqlite_repository -> sqlalchemy",
+]
+
+[[tool.importlinter.contracts]]
+name = "Only the Ollama adapter imports the HTTP client and the JSON Schema validator"
+type = "forbidden"
+source_modules = ["formlens"]
+forbidden_modules = ["httpx2", "httpx", "jsonschema"]
+ignore_imports = [
+    "formlens.extractions.adapters.ollama_extractor -> httpx2",
+    "formlens.extractions.adapters.ollama_extractor -> jsonschema",
 ]
 
 [[tool.importlinter.contracts]]
@@ -303,6 +314,7 @@ source_modules = [
     "formlens.parsing.schemas",
     "formlens.parsing.service",
     "formlens.parsing.slots",
+    "formlens.patterns",
     "formlens.problems",
     "formlens.query",
     "formlens.templates",

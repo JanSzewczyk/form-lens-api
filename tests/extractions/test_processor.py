@@ -140,7 +140,7 @@ def test_a_busy_parser_puts_the_job_back_and_the_attempt_is_not_used() -> None:
     harness = Harness(text_source=FakeTextSource(errors=[ParserBusy()]), extractor=FakeExtractor(VALUES))
     extraction = harness.submit()
 
-    assert harness.processor.run_once() is True
+    assert harness.processor.run_once() is False  # no work now: the worker must pause, not claim it again
 
     waiting = harness.stored(extraction)
     assert (waiting.status, waiting.attempts) == (ExtractionStatus.PENDING, 0)

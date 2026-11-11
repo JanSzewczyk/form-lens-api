@@ -178,3 +178,20 @@ def test_a_draft_is_immutable() -> None:
 
     with pytest.raises(AttributeError):
         draft.name = "Other"  # type: ignore[misc]  # frozen on purpose
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    ["(?=a)a", "(?!a)b", "(?<=a)b", r"(a)\1", r"a\Z", "[[a]"],
+    ids=["lookahead", "negative-lookahead", "lookbehind", "backreference", "python-only-escape", "python-only-class"],
+)
+def test_a_pattern_the_linear_time_engine_cannot_run_is_refused_when_the_field_is_made(pattern: str) -> None:
+    with pytest.raises(InvalidTemplate, match="not a valid regular expression") as raised:
+        TemplateFieldFactory.build(name="code", pattern=pattern)
+
+    assert raised.value.field == "code"
+    assert pattern not in str(raised.value)
+
+
+def test_a_pattern_the_linear_time_engine_runs_is_accepted_even_if_python_re_refuses_it() -> None:
+    assert TemplateFieldFactory.build(pattern=r"\p{L}+").pattern == r"\p{L}+"

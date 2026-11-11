@@ -13,6 +13,7 @@ from enum import StrEnum
 from typing import Final, NoReturn
 from uuid import UUID
 
+from formlens.patterns import UnsupportedPattern, check_pattern
 from formlens.templates.exceptions import InvalidTemplate
 
 MAX_FIELDS: Final = 50
@@ -117,10 +118,10 @@ class TemplateField:
         if not self.pattern or len(self.pattern) > MAX_PATTERN_LENGTH:
             self._refuse(f"pattern must be 1 to {MAX_PATTERN_LENGTH} characters")
         try:
-            re.compile(self.pattern)
-        except re.error, OverflowError, RecursionError:
-            # `a{4294967295}` raises OverflowError and a deeply nested group RecursionError, not re.error.
-            self._refuse("pattern is not a valid regular expression")
+            check_pattern(self.pattern)
+        except UnsupportedPattern:
+            # The same engine that runs the pattern on a document decides, so every stored pattern can be run.
+            self._refuse("pattern is not a valid regular expression (lookaround and backreferences are not supported)")
 
 
 def _is_storable(text: str) -> bool:

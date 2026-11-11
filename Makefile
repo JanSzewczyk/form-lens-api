@@ -105,14 +105,19 @@ docker-build:
 
 # Needs a .env (cp .env.example .env) and the transformers model (make download-models
 # VLM_BACKEND=transformers), mounted read-only; MODELS_PATH (default models/) names the host folder.
-# HOST, PORT, ENVIRONMENT, VLM_BACKEND and MODELS_PATH are forced: the server must listen on 0.0.0.0,
+# HOST, PORT, ENVIRONMENT, VLM_BACKEND, MODELS_PATH and DB_URL are forced: the server must listen on 0.0.0.0,
 # --env-file would replace the image's `production` with the `local` of .env.example, `mlx` does not
-# run in a Linux container and the container sees the model at /models. -e wins over --env-file.
+# run in a Linux container, the container sees the model at /models and the database at /data (the named
+# volume formlens-data). The container migrates the database before it serves. Ollama runs on the host:
+# LLM_BASE_URL defaults to host.docker.internal, which --add-host makes work on Linux too. -e wins over --env-file.
 docker-run:
 	docker run --rm -p 8000:8000 --read-only --tmpfs /tmp --env-file .env \
 		--volume "$(abspath $(or $(MODELS_PATH),models)):/models:ro" \
+		--volume formlens-data:/data --add-host host.docker.internal:host-gateway \
 		-e HOST=0.0.0.0 -e PORT=8000 -e ENVIRONMENT=production \
-		-e VLM_BACKEND=transformers -e MODELS_PATH=/models formlens:local
+		-e VLM_BACKEND=transformers -e MODELS_PATH=/models \
+		-e DB_URL=sqlite:////data/formlens.db \
+		-e LLM_BASE_URL=$(or $(LLM_BASE_URL),http://host.docker.internal:11434/v1) formlens:local
 
 clean:
 	rm -rf .mypy_cache .pytest_cache .ruff_cache .hypothesis .import_linter_cache .schemathesis \

@@ -1,6 +1,29 @@
 {
   "components": {
     "schemas": {
+      "Body_create_extraction": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "The document: a PDF, PNG, JPEG or TIFF file. An empty file is refused with 400.",
+            "minLength": 1,
+            "title": "File",
+            "type": "string"
+          },
+          "template_id": {
+            "description": "Identifier of the template to read the document against.",
+            "format": "uuid",
+            "title": "Template Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "template_id",
+          "file"
+        ],
+        "title": "Body_create_extraction",
+        "type": "object"
+      },
       "Body_parse_document": {
         "properties": {
           "file": {
@@ -16,6 +39,187 @@
         ],
         "title": "Body_parse_document",
         "type": "object"
+      },
+      "ExtractionErrorResponse": {
+        "description": "Why an extraction failed.",
+        "properties": {
+          "message": {
+            "description": "Fixed text for people. It never holds text of the document.",
+            "examples": [
+              "The extraction took longer than the time allowed."
+            ],
+            "title": "Message",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/FailureReason",
+            "description": "Machine-readable cause; branch on this.",
+            "examples": [
+              "timed_out"
+            ]
+          }
+        },
+        "required": [
+          "reason",
+          "message"
+        ],
+        "title": "ExtractionErrorResponse",
+        "type": "object"
+      },
+      "ExtractionResponse": {
+        "description": "An extraction: where it is, and its result once it has one.",
+        "properties": {
+          "attempts": {
+            "description": "How many times the worker took the job.",
+            "examples": [
+              1
+            ],
+            "minimum": 0.0,
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "created_at": {
+            "description": "When the document was submitted (UTC).",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExtractionErrorResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Present when `status` is `failed`."
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the extraction ended (UTC). The result is kept for a limited time after this.",
+            "title": "Finished At"
+          },
+          "id": {
+            "description": "Identifier of the extraction.",
+            "examples": [
+              "0192f5e0-5a3b-7c11-9d2e-3f6a1b2c4d5e"
+            ],
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "missing_required": {
+            "description": "The required fields whose value is `null`. A completed result may have some; it is still delivered. Empty until the extraction completes.",
+            "examples": [
+              []
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Required",
+            "type": "array"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "One key per field of the template, `null` where the document does not show a value. Present when `status` is `completed`.",
+            "examples": [
+              {
+                "invoice_number": "FV/12/2026"
+              }
+            ],
+            "title": "Result"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the worker took the job (UTC); `null` while it waits.",
+            "title": "Started At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExtractionStatus",
+            "description": "`pending` waits for the worker, `running` is being read, `completed` has a `result`, `failed` has an `error`.",
+            "examples": [
+              "pending"
+            ]
+          },
+          "template_id": {
+            "description": "The template the document is read against.",
+            "examples": [
+              "0192f5e0-5a3b-7c11-9d2e-3f6a1b2c4d00"
+            ],
+            "format": "uuid",
+            "title": "Template Id",
+            "type": "string"
+          },
+          "template_version": {
+            "description": "The version of the template that was copied when the document was submitted; a later edit does not change this extraction.",
+            "examples": [
+              1
+            ],
+            "title": "Template Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "template_id",
+          "template_version",
+          "missing_required",
+          "attempts",
+          "created_at"
+        ],
+        "title": "ExtractionResponse",
+        "type": "object"
+      },
+      "ExtractionStatus": {
+        "description": "Where an extraction is in its life.",
+        "enum": [
+          "pending",
+          "running",
+          "completed",
+          "failed"
+        ],
+        "title": "ExtractionStatus",
+        "type": "string"
+      },
+      "FailureReason": {
+        "description": "Why an extraction failed.",
+        "enum": [
+          "invalid_file",
+          "parse_failed",
+          "llm_unavailable",
+          "invalid_output",
+          "timed_out",
+          "interrupted",
+          "document_too_long"
+        ],
+        "title": "FailureReason",
+        "type": "string"
       },
       "FieldSpec": {
         "additionalProperties": false,
@@ -784,6 +988,176 @@
         ]
       }
     },
+    "/v1/extractions": {
+      "post": {
+        "description": "Queue a document to be read against a template.\n\nSend the file as multipart form data in the `file` field, with the `template_id` field. The answer comes\nat once, with status 202 and a `Location`; the document is read later. The file is refused at once when it\nis empty, too large or not a PDF, PNG, JPEG or TIFF. A full queue answers 503 with a `Retry-After` header.",
+        "operationId": "create_extraction",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_extraction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractionResponse"
+                }
+              }
+            },
+            "description": "The document is queued. Poll the `Location` until `status` is `completed` or `failed`.",
+            "headers": {
+              "Location": {
+                "description": "Where to read the extraction.",
+                "schema": {
+                  "examples": [
+                    "/v1/extractions/0192f5e0-5a3b-7c11-9d2e-3f6a1b2c4d5e"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "The file is empty (`invalid-file`), or the multipart body is malformed (`about:blank`)."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Template not found (`template-not-found`)"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "File too large (`file-too-large`)"
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Unsupported media type (`unsupported-media-type`)"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Request validation failed (`validation-error`): `file` is missing, is sent more than once or is a plain field; `template_id` is missing or is not a UUID."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Queue full (`queue-full`)",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before trying again; set when the queue is full.",
+                "schema": {
+                  "examples": [
+                    30
+                  ],
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Create Extraction",
+        "tags": [
+          "extractions"
+        ]
+      }
+    },
+    "/v1/extractions/{extraction_id}": {
+      "get": {
+        "description": "Return an extraction.\n\nWhile `status` is `pending` or `running`, ask again. A `completed` extraction has a `result` with one\nkey per field of the template (`null` where the document shows nothing) and the required fields that\ncame back `null` under `missing_required`. A `failed` one has an `error`. A result is kept for a limited\ntime after it ends, then the extraction is gone.",
+        "operationId": "get_extraction",
+        "parameters": [
+          {
+            "description": "Identifier of the extraction.",
+            "in": "path",
+            "name": "extraction_id",
+            "required": true,
+            "schema": {
+              "description": "Identifier of the extraction.",
+              "format": "uuid",
+              "title": "Extraction Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "No extraction has this id, or its result expired (`extraction-not-found`)."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Request validation failed (`validation-error`)"
+          }
+        },
+        "summary": "Get Extraction",
+        "tags": [
+          "extractions"
+        ]
+      }
+    },
     "/v1/templates": {
       "get": {
         "description": "List templates, oldest first, one page at a time.",
@@ -1104,6 +1478,10 @@
     {
       "description": "The fields a form has. An extraction reads a document against one template.",
       "name": "templates"
+    },
+    {
+      "description": "Submit a document with a template and read the result later. The model runs on the server; nothing leaves it.",
+      "name": "extractions"
     }
   ]
 }

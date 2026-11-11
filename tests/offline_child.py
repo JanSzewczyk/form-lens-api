@@ -63,15 +63,19 @@ def parse() -> dict[str, Any]:
 
     from formlens.config import Settings
     from formlens.main import create_app
+    from formlens.migrations import upgrade_to_head
 
+    database = f"sqlite:///{Path.cwd() / 'offline.db'}"  # the start checks that the database is migrated
+    upgrade_to_head(database)
     settings = Settings(
         _env_file=None,
         environment="test",
+        db_url=database,
         models_path=Path(os.environ["MODELS_PATH"]),
         vlm_backend=os.environ["VLM_BACKEND"],  # type: ignore[arg-type]
     )
     responses = []
-    with TestClient(create_app(settings)) as client:
+    with TestClient(create_app(settings, start_worker=False)) as client:
         for name, media_type in (("text_layer.pdf", "application/pdf"), ("sample.png", "image/png")):
             reply = client.post("/v1/documents/parse", files={"file": (name, (DATA / name).read_bytes(), media_type)})
             body = reply.json()

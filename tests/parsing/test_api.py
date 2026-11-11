@@ -18,6 +18,7 @@ from formlens.parsing.models import BYTES_PER_MB
 from formlens.parsing.ports import ParseResult
 from tests.conftest import make_settings
 from tests.documents import MULTIPART, PNG_SIGNATURE, multipart_body, multipart_chunks, png_of_size, sample
+from tests.extractions.fakes import FakeExtractor
 from tests.fakes import FakeParser
 
 URL = "/v1/documents/parse"
@@ -32,8 +33,8 @@ def post_file(
 
 
 @pytest.fixture
-def settings() -> Settings:
-    return make_settings(max_upload_mb=1)
+def settings(db_url: str) -> Settings:
+    return make_settings(max_upload_mb=1, db_url=db_url)
 
 
 class TestParsing:
@@ -287,8 +288,13 @@ class TestCors:
     ORIGIN = "https://app.example.com"
 
     @pytest.fixture
-    def cors_app(self, parser: FakeParser) -> FastAPI:
-        return create_app(make_settings(max_upload_mb=1, cors_origins=[self.ORIGIN]), parser_factory=lambda _: parser)
+    def cors_app(self, parser: FakeParser, db_url: str) -> FastAPI:
+        return create_app(
+            make_settings(max_upload_mb=1, cors_origins=[self.ORIGIN], db_url=db_url),
+            parser_factory=lambda _: parser,
+            extractor_factory=lambda _: FakeExtractor(),
+            start_worker=False,
+        )
 
     @pytest.fixture
     def cors_client(self, cors_app: FastAPI) -> Iterator[TestClient]:
@@ -670,8 +676,8 @@ class TestLogsAtDebug:
     MARKER = "unique-marker-c07e1b"
 
     @pytest.fixture
-    def settings(self) -> Settings:
-        return make_settings(max_upload_mb=1, log_level="DEBUG")
+    def settings(self, db_url: str) -> Settings:
+        return make_settings(max_upload_mb=1, log_level="DEBUG", db_url=db_url)
 
     @pytest.mark.parametrize(
         ("content", "status"),
@@ -755,8 +761,8 @@ class TestMalformedMultipartLogs:
     MARKER = "unique-marker-b6d4"
 
     @pytest.fixture
-    def settings(self) -> Settings:
-        return make_settings(max_upload_mb=1, log_level="DEBUG")
+    def settings(self, db_url: str) -> Settings:
+        return make_settings(max_upload_mb=1, log_level="DEBUG", db_url=db_url)
 
     @pytest.mark.parametrize(
         "body",

@@ -16,12 +16,23 @@ services:
       # `make download-models VLM_BACKEND=transformers`.
       VLM_BACKEND: transformers
       MODELS_PATH: /models
+      # SQLite in the named volume below; the container migrates it before it serves.
+      DB_URL: sqlite:////data/formlens.db
+      # Ollama runs on the host, outside the container (`ollama serve`, `ollama pull qwen3:8b`).
+      LLM_BASE_URL: http://host.docker.internal:11434/v1
+    extra_hosts:
+      # Docker Desktop knows this name; on Linux it must be added.
+      - "host.docker.internal:host-gateway"
     volumes:
       # The host folder `make download-models` filled (MODELS_PATH, `models/` by default), read-only.
       - type: bind
         source: ${MODELS_PATH:-./models}
         target: /models
         read_only: true
+      # The database: the one writable place; the root file system stays read-only.
+      - type: volume
+        source: formlens-data
+        target: /data
     read_only: true
     tmpfs:
       - /tmp
@@ -29,3 +40,6 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+
+volumes:
+  formlens-data:

@@ -26,8 +26,8 @@ type Scenario = Callable[[FastAPI, TestClient], Response]
 
 
 @pytest.fixture
-def settings() -> Settings:
-    return make_settings(max_upload_mb=1)
+def settings(db_url: str) -> Settings:
+    return make_settings(max_upload_mb=1, db_url=db_url)
 
 
 def post(client: TestClient, content: bytes, *, params: dict[str, str] | None = None) -> Response:

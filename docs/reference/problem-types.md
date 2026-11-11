@@ -7,14 +7,16 @@ for people. Types are `urn:problem:formlens:<slug>`.
 | --- | --- | --- | --- |
 | `validation-error` | 422 | Request validation failed | A body, path or query value is invalid on its own, a query parameter that takes one value is given twice, or `POST /v1/documents/parse` gets two `file` parts (`type` `repeated_parameter`). A `file` part without a `filename` is refused here too: it is a text field, not an upload. `errors` lists `loc`, `msg`, `type`; the submitted value is never returned. |
 | `service-not-ready` | 503 | Service not ready | A readiness check failed. `detail` names the checks, not the errors. |
-| `invalid-file` | 400 | Invalid file | `POST /v1/documents/parse`: the file is empty, or it has a PDF, PNG, JPEG or TIFF signature but the model cannot read it (a corrupt file, an image with absurd dimensions). |
+| `invalid-file` | 400 | Invalid file | `POST /v1/documents/parse` or `POST /v1/extractions`: the file is empty, or it has a PDF, PNG, JPEG or TIFF signature but the model cannot read it (a corrupt file, an image with absurd dimensions). |
 | `file-too-large` | 413 | File too large | The upload is larger than `MAX_UPLOAD_MB`. A body that is far larger is refused before it is read. |
 | `unsupported-media-type` | 415 | Unsupported media type | The file is not a PDF, PNG, JPEG or TIFF. The type is read from the bytes; the client's `Content-Type` and file name are ignored. |
 | `parse-failed` | 500 | Document could not be parsed | The model failed, ran past `PARSE_TIMEOUT_SECONDS`, or returned an incomplete result. An incomplete text is never returned. |
 | `model-unavailable` | 503 | Model unavailable | The document model is not loaded. |
 | `parser-busy` | 503 | Parser busy | Every parsing slot (`MAX_CONCURRENCY`) is taken. The `Retry-After` header says how many seconds to wait. Nothing is queued. |
-| `template-not-found` | 404 | Template not found | `GET`, `PUT` or `DELETE /v1/templates/{template_id}`: no template has this id. |
+| `template-not-found` | 404 | Template not found | `GET`, `PUT` or `DELETE /v1/templates/{template_id}`, or `POST /v1/extractions` with a `template_id` that does not exist: no template has this id. |
 | `invalid-template` | 422 | Invalid template | `POST /v1/templates` or `PUT /v1/templates/{template_id}`: the body has the right shape and sizes but the template breaks a rule the schema cannot state. `detail` names the field and the rule, never a value the client sent. The rules: field names are unique; a `choice` has `allowed_values` (distinct) and no other type has any; `minimum` and `maximum` are finite, only for `number` and `integer`, and not in the wrong order; `pattern` is only for `text` and is a valid regular expression; the name is not blank. The sizes (1 to 50 fields, the lengths of names, descriptions, patterns and values) are in the OpenAPI document and are refused as `validation-error`. |
+| `extraction-not-found` | 404 | Extraction not found | `GET /v1/extractions/{extraction_id}`: no extraction has this id, or its result expired (`RESULT_TTL_HOURS` after it ended) and was or is about to be deleted. |
+| `queue-full` | 503 | Queue full | `POST /v1/extractions`: `QUEUE_MAX_PENDING` extractions already wait. The `Retry-After` header says how many seconds to wait. Nothing was queued. |
 
 Errors the framework raises use `type` `about:blank` and the HTTP status phrase as `title`:
 

@@ -21,3 +21,10 @@ checks.positive_data_acceptance.expected-statuses = ["2xx", "3xx", "401", "403",
 [[operations]]
 include-name = "PUT /v1/templates/{template_id}"
 checks.positive_data_acceptance.expected-statuses = ["2xx", "3xx", "401", "403", "404", "409", "429", "5xx", "422"]
+
+# The same as for the parse endpoint: the file part is any bytes in the schema, and the service answers 415 to
+# what is not a PDF, PNG, JPEG or TIFF. A 422 `invalid-template` is not possible here; an unknown `template_id`
+# is a 404, which the default list already accepts.
+[[operations]]
+include-name = "POST /v1/extractions"
+checks.positive_data_acceptance.expected-statuses = ["2xx", "3xx", "401", "403", "404", "409", "429", "5xx", "415"]

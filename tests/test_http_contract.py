@@ -22,6 +22,7 @@ from httpx2 import Response
 from formlens.health.readiness import register_readiness_check
 from formlens.main import create_app
 from tests.conftest import make_settings
+from tests.extractions.fakes import FakeExtractor
 from tests.fakes import FakeParser
 from tests.probes import add_probe_routes
 
@@ -361,8 +362,14 @@ class TestUnhandledError:
 
 class TestCors:
     @pytest.fixture
-    def cors_app(self) -> FastAPI:
-        return add_probe_routes(create_app(make_settings(cors_origins=[ORIGIN]), parser_factory=lambda _: FakeParser()))
+    def cors_app(self, db_url: str) -> FastAPI:
+        app = create_app(
+            make_settings(cors_origins=[ORIGIN], db_url=db_url),
+            parser_factory=lambda _: FakeParser(),
+            extractor_factory=lambda _: FakeExtractor(),
+            start_worker=False,
+        )
+        return add_probe_routes(app)
 
     @pytest.fixture
     def cors(self, cors_app: FastAPI) -> Iterator[TestClient]:

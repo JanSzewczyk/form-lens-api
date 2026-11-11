@@ -94,7 +94,13 @@ class Database:
 
     def __init__(self, url: str) -> None:
         """Create the engine for `url`; the pragmas run on every connection the pool opens."""
-        self.engine: Engine = create_engine(url, connect_args={"check_same_thread": False})
+        self.engine: Engine = create_engine(
+            url,
+            connect_args={"check_same_thread": False},
+            # A failed statement names its parameters in the error text, and the parameters are a document or the
+            # values read from it; the error is logged, so they are hidden.
+            hide_parameters=True,
+        )
         event.listen(self.engine, "connect", _on_connect)
         event.listen(self.engine, "begin", _on_begin)
         self._write_engine = self.engine.execution_options(**{_WRITE_OPTION: True})

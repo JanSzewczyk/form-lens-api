@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import Integer, event, text
-from sqlalchemy.exc import StatementError
+from sqlalchemy.exc import OperationalError, StatementError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from formlens.database import BUSY_TIMEOUT_MS, Database, UtcDateTime
@@ -139,3 +139,12 @@ def test_an_empty_timestamp_stays_empty(database: Database) -> None:
 
     assert stored is not None
     assert stored.at is None
+
+
+def test_the_error_of_a_failed_statement_does_not_carry_its_parameters(database: Database) -> None:
+    """The parameters of a statement are a document or the values read from it; an error text is logged."""
+    with pytest.raises(OperationalError) as raised, database.write() as session:
+        session.execute(text("INSERT INTO no_such_table (value) VALUES (:value)"), {"value": "SECRET-MARKER-5521"})
+
+    assert "SECRET-MARKER-5521" not in str(raised.value)
+    assert "INSERT INTO no_such_table" in str(raised.value)  # the statement itself is still there to debug with

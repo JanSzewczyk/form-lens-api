@@ -5,6 +5,9 @@ Revises:
 Create Date: 2026-11-11
 
 Stage 2 is not released, so the tables of its later steps are added to this revision rather than to new ones.
+This stops at the first merge to main or the first deploy: after that every table change is a new revision, and
+this one is never edited again. A database migrated from an earlier state of this file is not updated by Alembic;
+delete it and run `make migrate` again.
 """
 
 from collections.abc import Sequence

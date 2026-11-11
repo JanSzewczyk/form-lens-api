@@ -9,8 +9,12 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
 - `make run` starts the service (`python -m formlens`). Tests use `uv run pytest`.
 - `make migrate` creates or updates the SQLite database of `DB_URL` (`python -m formlens migrate`). The service
   refuses to start on a database that is not at head; it never creates tables. A change to a table is a change
-  to `src/formlens/migrations/versions/v0001_initial.py` (Stage 2 is unreleased, so 0001 grows in place); the
-  migration test compares the migrated schema with the models.
+  to `src/formlens/migrations/versions/v0001_initial.py` (Stage 2 is unreleased, so 0001 grows in place) **until
+  the first merge to `main` or the first deploy; from then on every table change is a NEW revision** and 0001 is
+  never edited again. While 0001 still grows, a database file migrated before a pull has the old 0001 and Alembic
+  will not notice: after pulling a branch that edited 0001, delete your local `formlens.db` (and its `-wal` and
+  `-shm` files) and run `make migrate` on a fresh file. The migration test compares the migrated schema with
+  the models.
 - `make evaluate` runs the golden set (`tests/golden/`) against the real document model and Ollama; it stops
   with a message when either is missing. Never invent its numbers: the README's Accuracy section says "not
   measured yet" until someone has run it.

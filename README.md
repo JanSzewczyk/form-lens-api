@@ -543,7 +543,7 @@ The service reads all settings from the environment or `.env` (see `.env.example
 | `MODELS_PATH` | `./models` | Folder with the downloaded models; a relative path is read from the working directory; an empty value is refused |
 | `VLM_BACKEND` | `mlx` | `mlx` (the backend this project uses on Apple Silicon) or `transformers` |
 | `MAX_UPLOAD_MB` | `25` | Largest accepted upload, in megabytes (1 or more) |
-| `MAX_JSON_BODY_KB` | `256` | Largest accepted JSON body of `POST /v1/templates` and `PUT /v1/templates/{id}`, in kilobytes (1 or more); a larger one is a 413 `body-too-large`, answered before the body is read |
+| `MAX_JSON_BODY_KB` | `2048` | Largest accepted JSON body of `POST /v1/templates` and `PUT /v1/templates/{id}`, in kilobytes (1 or more); a larger one is a 413 `body-too-large`, answered before the body is read. **The default must stay above the largest valid template**: 50 fields, each a `choice` with 50 values of 100 characters and a 300-character description, plus a 300-character description and a 100-character name, is 283,093 bytes in ASCII, 543,493 bytes with Polish letters in UTF-8 and 1,585,093 bytes (about 1.55 MB) with every non-ASCII character escaped as `\uXXXX`, written by Python's `json` with its default separators; a client that pretty-prints adds more. `tests/templates/test_api.py` builds these bodies from the limits in `templates/models.py` |
 | `MAX_CONCURRENCY` | `1` | Documents converted at the same time (1 or more) |
 | `PARSE_TIMEOUT_SECONDS` | `300` | Seconds one document may take to parse (1 or more) |
 | `DB_URL` | `sqlite:///./formlens.db` | SQLite database (only `sqlite:` URLs); tables come from `make migrate` |

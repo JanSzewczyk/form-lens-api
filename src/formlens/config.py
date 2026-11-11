@@ -191,11 +191,12 @@ class Settings(ModelSettings, LlmSettings):
 
     max_upload_mb: int = Field(default=25, ge=1, description="Largest accepted upload, in megabytes.")
     max_json_body_kb: int = Field(
-        default=256,
+        default=2048,
         ge=1,
         description=(
             "Largest accepted JSON request body of the template routes, in kilobytes; a larger one is refused with "
-            "413 `body-too-large` before it is read."
+            "413 `body-too-large` before it is read. Keep it above the largest valid template (about 1.55 MB, "
+            "see the README)."
         ),
     )
     max_concurrency: int = Field(

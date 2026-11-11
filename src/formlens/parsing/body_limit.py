@@ -44,7 +44,7 @@ class BodyLimitMiddleware:
         paths: frozenset[str],
         max_upload_mb: int,
         json_rule: JsonRule | None = None,
-        max_json_kb: int = 256,
+        max_json_kb: int = 2048,
     ) -> None:
         """Guard the POST requests to `paths` (the limit plus the slack) and the requests `json_rule` names."""
         self.app = app

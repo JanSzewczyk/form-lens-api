@@ -6,7 +6,10 @@ from pathlib import Path
 import pytest
 from fastapi import FastAPI
 
+from formlens.config import Settings
+from formlens.extractions.adapters.ollama_extractor import PROMPT_VERSION
 from formlens.modelspec import MODEL_SPECS, VlmBackend
+from scripts.package_licenses import declared_licence
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -68,3 +71,34 @@ def test_every_make_target_is_declared_phony() -> None:
     rules = set(re.findall(r"^([a-z][a-z-]*):", makefile, re.MULTILINE))
 
     assert rules == declared
+
+
+def test_the_licences_page_names_the_default_language_model_and_does_not_claim_a_check_that_was_not_done() -> None:
+    """The model's licence is "not verified" until a person reads it; changing the default must touch the page."""
+    default = Settings(_env_file=None).llm_model
+    licenses = (ROOT / "docs" / "licenses.md").read_text(encoding="utf-8")
+
+    assert f"`{default}`" in licenses
+    assert "**not verified**" in licenses
+
+
+def test_the_licences_of_the_stage_2_libraries_are_those_the_installed_packages_declare() -> None:
+    licenses = (ROOT / "docs" / "licenses.md").read_text(encoding="utf-8")
+    section = licenses.split("### The libraries", 1)[1].split("This is the same kind of check", 1)[0]
+    rows = re.findall(r"^\| ([a-z0-9-]+) \| ([^|]+?) \| ([^|]+?) \| ([A-Za-z-]+) \|$", section, re.MULTILINE)
+
+    assert len(rows) >= 10
+    for name, version, licence, field in rows:
+        if name == "Package" or name.startswith("-"):
+            continue
+        assert declared_licence(name) == (version, licence, field), name
+
+
+def test_the_readme_accuracy_section_names_the_model_and_the_prompt_it_is_about() -> None:
+    """The numbers belong to one model and one prompt; the section must say which, and change when they do."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    section = readme.split("## 🎯 Accuracy", 1)[1].split("\n## ", 1)[0]
+
+    assert f"`{Settings(_env_file=None).llm_model}`" in section
+    assert f"`{PROMPT_VERSION}`" in section
+    assert "make evaluate" in section

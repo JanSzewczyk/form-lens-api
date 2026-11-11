@@ -21,6 +21,7 @@ from formlens.extractions.domain.model import ExtractionStatus
 from formlens.extractions.entrypoints.worker import ExtractionWorker
 from formlens.main import create_app
 from formlens.migrations import DatabaseNotAtHead
+from formlens.parsing.exceptions import ParserBusy
 from tests.conftest import make_settings
 from tests.documents import sample
 from tests.extractions.factories import ExtractionFactory
@@ -297,3 +298,36 @@ def test_a_running_worker_purges_expired_extractions_on_its_own_schedule(databas
     ran_again, gone = asyncio.run(run())
 
     assert (ran_again, gone) == (True, True)
+
+
+# --- a busy parser ---------------------------------------------------------------------------------
+
+
+def test_a_parser_that_stays_busy_does_not_make_the_worker_spin_and_the_job_completes_when_it_frees_up(
+    db_url: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    parser = FakeParser(error=ParserBusy())  # every document finds the parser full
+    settings = make_settings(db_url=db_url, job_poll_interval_seconds=0.2)
+    app = create_app(
+        settings, parser_factory=lambda _: parser, extractor_factory=lambda _: FakeExtractor({"number": "ok"})
+    )
+    try:
+        with TestClient(app) as client:
+            location = submit(client, template(client))
+
+            time.sleep(1.0)
+            busy_calls = len(parser.calls)
+            claims = capsys.readouterr().out.count('"extraction_claimed"')
+            still_waiting = client.get(location).json()
+
+            parser.error = None  # the slot is free again
+            assert wait_until(lambda: status_of(client, location) == "completed", timeout=5.0)
+            done = client.get(location).json()
+    finally:
+        app.state.database.dispose()
+
+    # About one try per poll interval (5 in a second); a spinning worker made about a thousand.
+    assert 1 <= busy_calls <= 15
+    assert 1 <= claims <= 15
+    assert (still_waiting["status"], still_waiting["attempts"]) == ("pending", 0)  # the attempt is not used
+    assert (done["status"], done["attempts"], done["result"]) == ("completed", 1, {"number": "ok"})

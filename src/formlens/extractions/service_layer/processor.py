@@ -67,7 +67,10 @@ class ExtractionProcessor:
         self._clock = clock
 
     def run_once(self) -> bool:
-        """Do one job if one waits; return whether a job was taken.
+        """Do one job if one waits; return whether the job ended or went back for a retry.
+
+        `False` means there was no work to do now: nothing waits, a timed-out conversion still runs, or the parser
+        had no free slot (the job went back, unused). The worker pauses on `False` and goes straight on after `True`.
 
         Nothing is taken while a job that ran out of time is still running: Python cannot stop it, it still
         holds a parser slot and memory, and a second job beside it would break the concurrency limit.
@@ -87,8 +90,10 @@ class ExtractionProcessor:
         except DeadlineExceeded:
             self._finish(claimed.fail(FailureReason.TIMED_OUT, self._clock()), claimed)
         except ParserBusy:
-            # No slot is free: this was not an attempt, so the job goes back and the attempt is given back.
+            # No slot is free: this was not an attempt, so the job goes back and the attempt is given back. It is
+            # also "no work now": returning True would make the worker claim the same job again at once, in a loop.
             self._repository.release_if_running(claimed.requeue_busy(), claimed_attempts=claimed.attempts)
+            return False
         except Exception as exc:  # noqa: BLE001 - a port is trusted to translate; an unknown error ends the job
             self._after_failure(claimed, self._reason_of(exc), cause=self._cause_of(exc))
         else:

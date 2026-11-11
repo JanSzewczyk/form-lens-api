@@ -1,4 +1,4 @@
-.PHONY: install format lint typecheck imports test check run openapi openapi-check api-lint \
+.PHONY: install format lint typecheck imports test check run migrate openapi openapi-check api-lint \
 	api-breaking schemathesis api-check audit download-models test-models docker-build docker-run clean
 
 # bash for `set -o pipefail` in recipes (macOS make 3.81 has no .SHELLFLAGS).
@@ -47,6 +47,11 @@ check:
 
 run:
 	uv run python -m formlens
+
+# Creates or updates the tables of DB_URL (default sqlite:///./formlens.db). The service refuses to
+# start on a database that is not at the newest revision.
+migrate:
+	uv run python -m formlens migrate
 
 # openapi.json is generated from the app; never edit it by hand.
 openapi:

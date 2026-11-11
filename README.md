@@ -266,6 +266,7 @@ nothing here measures the container's backend, so the constant stays.
 | --- | --- |
 | `make install` | Install locked dependencies (`uv sync --locked`) |
 | `make run` | Start the service (`python -m formlens`) |
+| `make migrate` | Create or update the database tables of `DB_URL` (`python -m formlens migrate`); run it before the first start |
 | `make format` | Ruff format |
 | `make lint` | Ruff lint |
 | `make typecheck` | mypy, strict |
@@ -448,6 +449,16 @@ The service reads all settings from the environment or `.env` (see `.env.example
 | `MAX_UPLOAD_MB` | `25` | Largest accepted upload, in megabytes (1 or more) |
 | `MAX_CONCURRENCY` | `1` | Documents converted at the same time (1 or more) |
 | `PARSE_TIMEOUT_SECONDS` | `300` | Seconds one document may take to parse (1 or more) |
+| `DB_URL` | `sqlite:///./formlens.db` | SQLite database (only `sqlite:` URLs); tables come from `make migrate` |
+| `LLM_BASE_URL` | `http://localhost:11434/v1` | Local language model endpoint; a loopback or private address, a name without a dot or `host.docker.internal` |
+| `LLM_MODEL` | `qwen3:8b` | Language model that reads the parsed text |
+| `LLM_TIMEOUT_SECONDS` | `120` | Seconds one model call may take (1 or more, below `JOB_TIMEOUT_SECONDS`) |
+| `LLM_MAX_INPUT_CHARS` | `20000` | Longest document text sent to the model, in characters |
+| `RESULT_TTL_HOURS` | `24` | Hours a finished extraction stays readable (1 or more) |
+| `JOB_TIMEOUT_SECONDS` | `600` | Seconds one extraction job may run (above `PARSE_TIMEOUT_SECONDS`) |
+| `JOB_MAX_ATTEMPTS` | `2` | Times a job is started before it fails (1 or more) |
+| `JOB_POLL_INTERVAL_SECONDS` | `2.0` | Seconds the idle worker waits before it looks for a job (above 0) |
+| `QUEUE_MAX_PENDING` | `100` | Extractions that may wait at once (1 or more) |
 
 Every key is optional. An invalid value stops the service at start-up instead of failing later.
 `MAX_UPLOAD_MB` is enforced twice: a body whose `Content-Length` is over the limit is refused with

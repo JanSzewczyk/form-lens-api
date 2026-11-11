@@ -13,6 +13,9 @@ from formlens.main import create_app
 from tests.fakes import FakeParser
 from tests.probes import add_probe_routes
 
+#: The settings a `slow` test takes from the outside: the model files and the language model it talks to.
+LLM_SETTINGS = ("llm_base_url", "llm_model")
+
 
 def make_settings(**overrides: Any) -> Settings:
     """Build Settings for a test: no `.env` file, environment `test`, overrides on top."""
@@ -21,13 +24,15 @@ def make_settings(**overrides: Any) -> Settings:
 
 
 def slow_settings() -> Settings:
-    """Settings for a test with the real model: only `MODELS_PATH` and `VLM_BACKEND` come from outside.
+    """Settings for a test with the real models: only the model settings come from outside.
 
-    They are read like the service and `make download-models` read them (the environment, then `.env`),
-    through `ModelSettings`, which ignores the rest of `.env`. Everything else is the test default.
+    `MODELS_PATH` and `VLM_BACKEND` are read like the service and `make download-models` read them (the
+    environment, then `.env`), through `ModelSettings`, which ignores the rest of `.env`. `LLM_BASE_URL`
+    and `LLM_MODEL` are taken from the environment when it sets them. Everything else is the test default.
     """
     models = ModelSettings()
-    return make_settings(models_path=models.models_path, vlm_backend=models.vlm_backend)
+    llm = {name: os.environ[name.upper()] for name in LLM_SETTINGS if name.upper() in os.environ}
+    return make_settings(models_path=models.models_path, vlm_backend=models.vlm_backend, **llm)
 
 
 @pytest.fixture(autouse=True)
@@ -35,11 +40,12 @@ def _isolate_from_exported_settings(request: pytest.FixtureRequest, monkeypatch:
     """Remove every setting from the environment, so an exported `DOCS_ENABLED` cannot change a test.
 
     `Settings(_env_file=None)` skips the file but not the shell. The `slow` tests keep `MODELS_PATH` and
-    `VLM_BACKEND` (`make test-models MODELS_PATH=/data/models`) and lose the other settings like any test.
+    `VLM_BACKEND` (`make test-models MODELS_PATH=/data/models`) and the two LLM settings
+    (`make test-models LLM_MODEL=...`), and lose the other settings like any test.
     """
     names = {name.upper() for name in Settings.model_fields}
     if request.node.get_closest_marker("slow") is not None:
-        names -= {name.upper() for name in ModelSettings.model_fields}
+        names -= {name.upper() for name in (*ModelSettings.model_fields, *LLM_SETTINGS)}
     for key in list(os.environ):  # settings names are case-insensitive
         if key.upper() in names:
             monkeypatch.delenv(key)

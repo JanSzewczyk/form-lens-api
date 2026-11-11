@@ -23,6 +23,8 @@ from tests.extractions.factories import NOW, ExtractionFactory
 
 CONTENT = b"%PDF-1.7 upload"
 THREADS = 6
+# One round of a race can pass by luck: every guard test runs on a fresh database in each of five rounds.
+ROUNDS = [pytest.param(number, id=f"round-{number}") for number in range(5)]
 
 
 def ids(n: int) -> list[UUID]:
@@ -30,7 +32,8 @@ def ids(n: int) -> list[UUID]:
 
 
 @pytest.mark.concurrency
-def test_every_waiting_job_is_claimed_exactly_once_by_competing_workers(database: Database) -> None:
+@pytest.mark.parametrize("_round", ROUNDS)
+def test_every_waiting_job_is_claimed_exactly_once_by_competing_workers(database: Database, _round: int) -> None:
     repository = SqliteExtractionRepository(database)
     jobs = ids(12)
     for i, job_id in enumerate(jobs):
@@ -57,7 +60,10 @@ def test_every_waiting_job_is_claimed_exactly_once_by_competing_workers(database
 
 
 @pytest.mark.concurrency
-def test_a_timeout_and_a_late_result_at_the_same_moment_leave_exactly_one_of_them_written(database: Database) -> None:
+@pytest.mark.parametrize("_round", ROUNDS)
+def test_a_timeout_and_a_late_result_at_the_same_moment_leave_exactly_one_of_them_written(
+    database: Database, _round: int
+) -> None:
     repository = SqliteExtractionRepository(database)
     job_id = ids(1)[0]
     repository.add(ExtractionFactory.build(id=job_id), CONTENT, max_pending=100)
@@ -82,7 +88,10 @@ def test_a_timeout_and_a_late_result_at_the_same_moment_leave_exactly_one_of_the
 
 
 @pytest.mark.concurrency
-def test_only_as_many_parallel_submissions_as_the_queue_has_room_for_are_accepted(database: Database) -> None:
+@pytest.mark.parametrize("_round", ROUNDS)
+def test_only_as_many_parallel_submissions_as_the_queue_has_room_for_are_accepted(
+    database: Database, _round: int
+) -> None:
     repository = SqliteExtractionRepository(database)
     room = 3
     jobs = ids(8)

@@ -1,5 +1,6 @@
 """The templates endpoints, through HTTP and a real SQLite file."""
 
+import json
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -11,6 +12,7 @@ from starlette.testclient import TestClient as StarletteTestClient
 from formlens.config import Settings
 from formlens.logging_config import configure_logging
 from formlens.main import create_app
+from formlens.patterns import matches
 from formlens.problems import PROBLEM_MEDIA_TYPE
 from formlens.templates.json_schema import build_json_schema
 from formlens.templates.models import FieldType, TemplateField
@@ -382,3 +384,109 @@ def test_creating_a_template_logs_its_id_and_size_but_not_its_content(
     assert "template_created" in out
     assert created["id"] in out
     assert marker not in out
+
+
+# --- patterns the matching engine runs ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    ["(?=a)a", "(?!a)b", "(?<=a)b", r"(a)\1", r"a\Z", "[[a]"],
+    ids=["lookahead", "negative-lookahead", "lookbehind", "backreference", "python-only-escape", "python-only-class"],
+)
+def test_a_pattern_the_matching_engine_cannot_compile_is_refused_at_creation(client: TestClient, pattern: str) -> None:
+    """`re` compiles all of these and `formlens.patterns.check_pattern` refuses them, so a template that stores one
+    fails every job it is used for (`invalid_output`, after every attempt). The spec says "no lookahead, lookbehind
+    or backreference" and the hand-off says they are refused at creation."""
+    response = client.post(URL, json=template_body(fields=[field_body(name="a", pattern=pattern)]))
+
+    assert response.status_code == 422
+    assert response.json()["type"] == problem_type("invalid-template")
+    assert client.get(URL).json()["total"] == 0
+
+
+def test_a_pattern_the_matching_engine_runs_is_not_refused_by_the_validator(client: TestClient) -> None:
+    """The validator (`re`) calls `\\p{L}+` invalid and the matcher (`pydantic-core`) runs it: they disagree.
+    Weaker than the defect above: a refusal of a runnable pattern costs the client a workaround, not a job."""
+    assert matches(r"\p{L}+", "zażółć") is True  # the matcher's verdict, as the worker uses it
+
+    response = client.post(URL, json=template_body(fields=[field_body(name="a", pattern=r"\p{L}+")]))
+
+    assert response.status_code == 201
+
+
+# --- input types -----------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("required", ["yes", "true", 1, 0], ids=["yes", "true-string", "one", "zero"])
+def test_required_is_a_json_boolean_and_nothing_that_merely_reads_like_one(client: TestClient, required: Any) -> None:
+    response = client.post(URL, json=template_body(fields=[field_body(name="a", required=required)]))
+
+    assert response.status_code == 422
+    assert response.json()["type"] == problem_type("validation-error")
+
+
+def test_text_in_any_script_survives_a_round_trip_in_every_text_field(client: TestClient) -> None:
+    body = template_body(
+        name="Zażółć gęślą jaźń 😀",
+        description="説明 — ünïcödé",
+        fields=[
+            field_body(name="state", type="choice", description="Stan", allowed_values=["tak ✓", "nie ✗", "może"]),
+            field_body(name="city", pattern="^[a-zżółćęśńźą ]+$"),
+        ],
+    )
+
+    created = client.post(URL, json=body)
+    read = client.get(f"{URL}/{created.json()['id']}")
+
+    assert created.status_code == 201
+    assert [read.json()[key] for key in ("name", "description")] == [body["name"], body["description"]]
+    assert read.json()["fields"][0]["allowed_values"] == ["tak ✓", "nie ✗", "może"]
+    assert read.json()["json_schema"]["properties"]["state"]["enum"] == ["tak ✓", "nie ✗", "może", None]
+
+
+@pytest.mark.parametrize("content_type", ["text/plain", "application/x-www-form-urlencoded", "application/xml"])
+def test_a_valid_body_sent_with_the_wrong_content_type_is_a_422_and_stores_nothing(
+    client: TestClient, content_type: str
+) -> None:
+    response = client.post(URL, content=json.dumps(template_body()), headers={"Content-Type": content_type})
+
+    assert response.status_code == 422
+    assert response.headers["content-type"] == PROBLEM_MEDIA_TYPE
+    assert client.get(URL).json()["total"] == 0
+
+
+def test_the_largest_page_is_accepted_and_one_more_is_not(client: TestClient) -> None:
+    create(client, name="Only")
+
+    assert client.get(URL, params={"limit": 100}).json()["limit"] == 100
+    assert client.get(URL, params={"limit": 101}).status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "allowed"),
+    [
+        pytest.param("PATCH", "/v1/templates", "GET, POST", id="collection-patch"),
+        pytest.param("DELETE", "/v1/templates", "GET, POST", id="collection-delete"),
+        pytest.param("PUT", "/v1/templates", "GET, POST", id="collection-put"),
+        pytest.param("POST", f"/v1/templates/{UUID(int=1)}", "DELETE, GET, PUT", id="item-post"),
+        pytest.param("PATCH", f"/v1/templates/{UUID(int=1)}", "DELETE, GET, PUT", id="item-patch"),
+        pytest.param("POST", "/v1/templates/not-a-uuid", "DELETE, GET, PUT", id="item-post-bad-id"),
+    ],
+)
+def test_a_wrong_method_on_a_templates_path_is_a_405_listing_every_method_of_the_path(
+    client: TestClient, method: str, path: str, allowed: str
+) -> None:
+    response = client.request(method, path)
+
+    assert response.status_code == 405
+    assert sorted(response.headers["Allow"].split(", ")) == sorted(allowed.split(", "))
+    assert response.headers["content-type"] == PROBLEM_MEDIA_TYPE
+
+
+@pytest.mark.parametrize("path", ["/v1/templates/", f"/v1/templates/{UUID(int=1)}/"])
+def test_a_trailing_slash_on_a_templates_path_is_a_404_problem_not_a_redirect(client: TestClient, path: str) -> None:
+    response = client.get(path, follow_redirects=False)
+
+    assert response.status_code == 404
+    assert response.headers["content-type"] == PROBLEM_MEDIA_TYPE

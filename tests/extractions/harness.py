@@ -8,6 +8,7 @@ from uuid import UUID
 
 from formlens.extractions.adapters.deadline import ThreadDeadline
 from formlens.extractions.domain.model import Extraction
+from formlens.extractions.domain.ports import ExtractionRepository
 from formlens.extractions.service_layer.processor import ExtractionProcessor, ProcessorConfig
 from formlens.extractions.service_layer.service import ExtractionService
 from tests.extractions.factories import NOW, TEMPLATE_ID, TemplateSnapshotFactory
@@ -35,7 +36,7 @@ def wait_until(condition: Callable[[], bool], *, timeout: float = 5.0) -> bool:
 class Harness:
     """The pieces of the extraction stack, built from fakes."""
 
-    repository: FakeExtractionRepository = field(default_factory=FakeExtractionRepository)
+    repository: ExtractionRepository = field(default_factory=FakeExtractionRepository)
     text_source: FakeTextSource = field(default_factory=FakeTextSource)
     extractor: FakeExtractor = field(default_factory=FakeExtractor)
     clock: FakeClock = field(default_factory=lambda: FakeClock(NOW))

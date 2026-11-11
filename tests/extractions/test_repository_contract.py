@@ -252,6 +252,23 @@ def test_releasing_an_extraction_that_already_ended_or_was_taken_again_changes_n
     assert repository.get(id_of(1)) == timed_out
 
 
+def test_a_release_by_an_earlier_attempt_does_not_put_the_later_attempt_back_in_the_queue(
+    repository: ExtractionRepository,
+) -> None:
+    """The guard of the attempt count in `release_if_running`: only the attempt that holds the job may give it back."""
+    first = claimed(repository, ExtractionFactory.build(id=id_of(1)))
+    assert repository.release_if_running(first.retry(), claimed_attempts=1) is True
+    second = repository.claim_next(NOW + timedelta(seconds=5))
+    assert second is not None
+    assert second.attempts == 2
+
+    stale = repository.release_if_running(first.requeue_busy(), claimed_attempts=1)
+
+    assert stale is False
+    assert repository.get(id_of(1)) == second
+    assert repository.count_pending() == 0
+
+
 # --- recovery --------------------------------------------------------------------------------------
 
 

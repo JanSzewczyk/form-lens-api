@@ -22,3 +22,4 @@ def app(settings: Settings, parser: FakeParser) -> Iterator[FastAPI]:
     application = create_app(settings, parser_factory=lambda _: parser)
     yield application
     application.dependency_overrides.clear()
+    application.state.database.dispose()

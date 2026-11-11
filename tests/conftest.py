@@ -1,7 +1,9 @@
 """Shared fixtures: settings that ignore the environment file, an app and a client."""
 
 import os
+import shutil
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -10,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from formlens.config import ModelSettings, Settings
 from formlens.main import create_app
+from formlens.migrations import upgrade_to_head
 from tests.fakes import FakeParser
 from tests.probes import add_probe_routes
 
@@ -51,10 +54,24 @@ def _isolate_from_exported_settings(request: pytest.FixtureRequest, monkeypatch:
             monkeypatch.delenv(key)
 
 
+@pytest.fixture(scope="session")
+def migrated_database(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A database file with every migration applied; each test gets its own copy (see `settings`)."""
+    path = tmp_path_factory.mktemp("migrated") / "formlens.db"
+    upgrade_to_head(f"sqlite:///{path}")
+    return path
+
+
 @pytest.fixture
-def settings() -> Settings:
-    """Default test settings."""
-    return make_settings()
+def settings(tmp_path: Path, migrated_database: Path) -> Settings:
+    """Default test settings, with a private copy of the migrated database as `DB_URL`.
+
+    A real file, not an in-memory database: the tests of the race guards need connections that really compete.
+    A test never touches `./formlens.db`.
+    """
+    database = tmp_path / "formlens.db"
+    shutil.copyfile(migrated_database, database)
+    return make_settings(db_url=f"sqlite:///{database}")
 
 
 @pytest.fixture
@@ -63,6 +80,7 @@ def app(settings: Settings) -> Iterator[FastAPI]:
     application = create_app(settings, parser_factory=lambda _: FakeParser())
     yield application
     application.dependency_overrides.clear()
+    application.state.database.dispose()
 
 
 @pytest.fixture

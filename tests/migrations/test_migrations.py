@@ -9,6 +9,7 @@ from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
 from sqlalchemy import inspect
 
+import formlens.templates.tables  # noqa: F401  # registers its tables on Base.metadata for the comparison
 from formlens.database import Base, Database
 from formlens.logging_config import configure_logging
 from formlens.migrations import (
@@ -42,7 +43,7 @@ def test_a_new_database_is_upgraded_to_the_head_revision(url: str, database: Dat
     upgrade_to_head(url)
 
     assert current_revision(database.engine) == head_revision()
-    assert "alembic_version" in table_names(database)
+    assert {"alembic_version", "templates"} <= table_names(database)
 
 
 def test_upgrading_twice_changes_nothing(url: str, database: Database) -> None:

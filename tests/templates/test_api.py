@@ -1,0 +1,369 @@
+"""The templates endpoints, through HTTP and a real SQLite file."""
+
+from typing import Any
+from uuid import UUID, uuid4
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from starlette.testclient import TestClient as StarletteTestClient
+
+from formlens.config import Settings
+from formlens.logging_config import configure_logging
+from formlens.main import create_app
+from formlens.problems import PROBLEM_MEDIA_TYPE
+from formlens.templates.json_schema import build_json_schema
+from formlens.templates.models import FieldType, TemplateField
+from tests.conftest import make_settings
+from tests.fakes import FakeParser
+from tests.templates.factories import field_body, template_body
+
+URL = "/v1/templates"
+
+
+def create(client: TestClient, **overrides: Any) -> dict[str, Any]:
+    response = client.post(URL, json=template_body(**overrides))
+    assert response.status_code == 201, response.text
+    body: dict[str, Any] = response.json()
+    return body
+
+
+def problem_type(slug: str) -> str:
+    return f"urn:problem:formlens:{slug}"
+
+
+# --- create ----------------------------------------------------------------------------------------
+
+
+def test_creating_a_template_returns_201_with_version_one_and_the_generated_schema(client: TestClient) -> None:
+    response = client.post(
+        URL,
+        json={
+            "name": "Invoice",
+            "description": "Supplier invoice",
+            "fields": [
+                field_body(name="invoice_number", description="Top right", required=True),
+                field_body(name="total", type="number", minimum=0, maximum=1000),
+                field_body(name="state", type="choice", allowed_values=["paid", "unpaid"]),
+            ],
+        },
+    )
+
+    body = response.json()
+    assert response.status_code == 201
+    assert (body["name"], body["description"], body["version"]) == ("Invoice", "Supplier invoice", 1)
+    assert UUID(body["id"]).version == 7
+    assert [item["name"] for item in body["fields"]] == ["invoice_number", "total", "state"]
+    assert body["fields"][0] == {
+        "name": "invoice_number",
+        "type": "text",
+        "description": "Top right",
+        "required": True,
+        "allowed_values": None,
+        "minimum": None,
+        "maximum": None,
+        "pattern": None,
+    }
+    expected_fields = [
+        TemplateField("invoice_number", FieldType.TEXT, description="Top right", required=True),
+        TemplateField("total", FieldType.NUMBER, minimum=0, maximum=1000),
+        TemplateField("state", FieldType.CHOICE, allowed_values=("paid", "unpaid")),
+    ]
+    assert body["json_schema"] == build_json_schema(expected_fields)
+    assert body["created_at"] == body["updated_at"]
+
+
+def test_a_created_template_can_be_read_back_unchanged(client: TestClient) -> None:
+    created = create(client, name="Roundtrip", fields=[field_body(name="when", type="date", required=True)])
+
+    response = client.get(f"{URL}/{created['id']}")
+
+    assert response.status_code == 200
+    assert response.json() == created
+
+
+def test_a_template_is_still_there_after_the_app_is_rebuilt_on_the_same_database(
+    client: TestClient, settings: Settings
+) -> None:
+    created = create(client, name="Durable")
+    other = create_app(settings, parser_factory=lambda _: FakeParser())
+    try:
+        response = StarletteTestClient(other).get(f"{URL}/{created['id']}")
+    finally:
+        other.state.database.dispose()
+
+    assert response.json()["name"] == "Durable"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "rule"),
+    [
+        pytest.param({"fields": []}, "at least one field", id="no-fields"),
+        pytest.param(
+            {"fields": [field_body(name="a"), field_body(name="a")]},
+            "Field a: field names must be unique",
+            id="duplicate",
+        ),
+        pytest.param({"fields": [field_body(name="__proto__")]}, "a field name must be", id="unsafe-key"),
+        pytest.param(
+            {"fields": [field_body(name="a", allowed_values=["x"])]},
+            "Field a: allowed_values is only for",
+            id="values-on-text",
+        ),
+        pytest.param(
+            {"fields": [field_body(name="a", type="choice")]},
+            "Field a: the type choice needs allowed_values",
+            id="choice-without-values",
+        ),
+        pytest.param(
+            {"fields": [field_body(name="a", minimum=1)]},
+            "Field a: minimum and maximum are only for",
+            id="range-on-text",
+        ),
+        pytest.param(
+            {"fields": [field_body(name="a", type="number", minimum=2, maximum=1)]},
+            "Field a: minimum is greater than maximum",
+            id="range-reversed",
+        ),
+        pytest.param(
+            {"fields": [field_body(name="a", pattern="(")]}, "Field a: pattern is not a valid", id="bad-pattern"
+        ),
+        pytest.param(
+            {"fields": [field_body(name="a", pattern="x" * 201)]},
+            "Field a: pattern must be 1 to 200",
+            id="long-pattern",
+        ),
+        pytest.param(
+            {"fields": [field_body(name=f"f{i}") for i in range(51)]}, "at most 50 fields", id="too-many-fields"
+        ),
+        pytest.param({"name": " "}, "name must be 1 to 100", id="blank-name"),
+    ],
+)
+def test_a_template_that_breaks_a_rule_is_a_422_invalid_template_naming_the_rule(
+    client: TestClient, overrides: dict[str, Any], rule: str
+) -> None:
+    response = client.post(URL, json=template_body(**overrides))
+
+    body = response.json()
+    assert response.status_code == 422
+    assert response.headers["content-type"] == PROBLEM_MEDIA_TYPE
+    assert body["type"] == problem_type("invalid-template")
+    assert body["title"] == "Invalid template"
+    assert rule in body["detail"]
+    assert client.get(URL).json()["total"] == 0
+
+
+def test_the_422_for_a_rule_never_repeats_a_value_of_the_request(client: TestClient) -> None:
+    marker = "MARKER-8841"
+    response = client.post(
+        URL,
+        json=template_body(fields=[field_body(name="a", pattern=marker + "(", description=marker)]),
+    )
+
+    assert response.status_code == 422
+    assert marker not in response.text
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param({"name": "x"}, id="fields-missing"),
+        pytest.param({"fields": [field_body()]}, id="name-missing"),
+        pytest.param(template_body(fields=[field_body(type="barcode")]), id="unknown-type"),
+        pytest.param(template_body(fields=[{"type": "text"}]), id="field-name-missing"),
+        pytest.param(template_body(unknown=1), id="unknown-key"),
+        pytest.param(template_body(fields=[field_body(minimum="low", type="number")]), id="range-not-a-number"),
+        pytest.param(template_body(name=5), id="name-not-text"),
+        pytest.param([], id="not-an-object"),
+    ],
+)
+def test_a_body_of_the_wrong_shape_is_a_422_validation_error(client: TestClient, body: Any) -> None:
+    response = client.post(URL, json=body)
+
+    assert response.status_code == 422
+    assert response.json()["type"] == problem_type("validation-error")
+
+
+def test_a_body_that_is_not_json_is_a_422_and_one_that_is_not_text_is_a_400(client: TestClient) -> None:
+    headers = {"Content-Type": "application/json"}
+
+    not_json = client.post(URL, content=b"{not json", headers=headers)
+    not_text = client.post(URL, content=b"\xff\xfe\x00", headers=headers)
+
+    assert not_json.status_code == 422
+    assert not_json.json()["errors"][0]["type"] == "json_invalid"
+    assert not_text.status_code == 400
+
+
+def test_a_not_a_number_in_a_range_is_refused(client: TestClient) -> None:
+    response = client.post(
+        URL,
+        content=b'{"name": "x", "fields": [{"name": "a", "type": "number", "minimum": NaN}]}',
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 422
+
+
+# --- read ------------------------------------------------------------------------------------------
+
+
+def test_an_unknown_template_is_a_404_template_not_found(client: TestClient) -> None:
+    response = client.get(f"{URL}/{uuid4()}")
+
+    assert response.status_code == 404
+    assert response.headers["content-type"] == PROBLEM_MEDIA_TYPE
+    assert response.json()["type"] == problem_type("template-not-found")
+
+
+def test_an_id_that_is_not_a_uuid_is_a_422(client: TestClient) -> None:
+    response = client.get(f"{URL}/not-a-uuid")
+
+    assert response.status_code == 422
+    assert response.json()["type"] == problem_type("validation-error")
+
+
+def test_listing_an_empty_database_returns_an_empty_page(client: TestClient) -> None:
+    response = client.get(URL)
+
+    assert response.json() == {"items": [], "total": 0, "limit": 20, "offset": 0}
+
+
+def test_templates_are_listed_oldest_first_one_page_at_a_time(client: TestClient) -> None:
+    names = [create(client, name=f"Form {i}")["name"] for i in range(5)]
+
+    first = client.get(URL, params={"limit": 2}).json()
+    second = client.get(URL, params={"limit": 2, "offset": 2}).json()
+    last = client.get(URL, params={"limit": 2, "offset": 4}).json()
+    beyond = client.get(URL, params={"limit": 2, "offset": 10}).json()
+
+    assert [item["name"] for item in first["items"]] == names[0:2]
+    assert [item["name"] for item in second["items"]] == names[2:4]
+    assert [item["name"] for item in last["items"]] == names[4:5]
+    assert beyond["items"] == []
+    assert (first["total"], second["total"], last["total"], beyond["total"]) == (5, 5, 5, 5)
+    assert (second["limit"], second["offset"]) == (2, 2)
+
+
+def test_the_default_page_size_comes_from_the_settings(settings: Settings) -> None:
+    app: FastAPI = create_app(
+        settings.model_copy(update={"default_page_size": 3}), parser_factory=lambda _: FakeParser()
+    )
+    try:
+        client = StarletteTestClient(app)
+        for i in range(4):
+            create(client, name=f"Form {i}")
+
+        page = client.get(URL).json()
+    finally:
+        app.state.database.dispose()
+
+    assert (len(page["items"]), page["total"], page["limit"]) == (3, 4, 3)
+
+
+@pytest.mark.parametrize(
+    "params",
+    [{"limit": 0}, {"limit": 101}, {"offset": -1}, {"limit": "many"}],
+    ids=["zero", "over-max", "negative-offset", "text"],
+)
+def test_a_bad_page_request_is_a_422(client: TestClient, params: dict[str, Any]) -> None:
+    assert client.get(URL, params=params).status_code == 422
+
+
+# --- replace ---------------------------------------------------------------------------------------
+
+
+def test_replacing_a_template_returns_the_next_version_with_the_new_content(client: TestClient) -> None:
+    created = create(client, name="Before", fields=[field_body(name="old")])
+
+    response = client.put(
+        f"{URL}/{created['id']}",
+        json=template_body(name="After", description="Changed", fields=[field_body(name="fresh", type="integer")]),
+    )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert (body["id"], body["version"], body["name"], body["description"]) == (created["id"], 2, "After", "Changed")
+    assert [(item["name"], item["type"]) for item in body["fields"]] == [("fresh", "integer")]
+    assert body["json_schema"]["required"] == ["fresh"]
+    assert body["created_at"] == created["created_at"]
+    assert body["updated_at"] >= created["updated_at"]
+    assert client.get(f"{URL}/{created['id']}").json() == body
+
+
+def test_each_replacement_raises_the_version_by_one(client: TestClient) -> None:
+    created = create(client)
+
+    versions = [
+        client.put(f"{URL}/{created['id']}", json=template_body(name=f"v{i}")).json()["version"] for i in range(3)
+    ]
+
+    assert versions == [2, 3, 4]
+
+
+def test_replacing_an_unknown_template_is_a_404(client: TestClient) -> None:
+    response = client.put(f"{URL}/{uuid4()}", json=template_body())
+
+    assert response.status_code == 404
+    assert response.json()["type"] == problem_type("template-not-found")
+
+
+def test_an_invalid_replacement_changes_nothing_and_keeps_the_version(client: TestClient) -> None:
+    created = create(client, name="Stable")
+
+    response = client.put(f"{URL}/{created['id']}", json=template_body(fields=[]))
+
+    assert response.status_code == 422
+    assert response.json()["type"] == problem_type("invalid-template")
+    assert client.get(f"{URL}/{created['id']}").json() == created
+
+
+def test_a_replacement_with_a_body_of_the_wrong_shape_is_a_422_validation_error(client: TestClient) -> None:
+    created = create(client)
+
+    response = client.put(f"{URL}/{created['id']}", json={"name": "x"})
+
+    assert response.status_code == 422
+    assert response.json()["type"] == problem_type("validation-error")
+
+
+# --- delete ----------------------------------------------------------------------------------------
+
+
+def test_deleting_a_template_returns_204_without_a_body_and_removes_it(client: TestClient) -> None:
+    created = create(client)
+
+    response = client.delete(f"{URL}/{created['id']}")
+
+    assert (response.status_code, response.content) == (204, b"")
+    assert client.get(f"{URL}/{created['id']}").status_code == 404
+    assert client.get(URL).json()["total"] == 0
+
+
+def test_deleting_an_unknown_or_an_already_deleted_template_is_a_404(client: TestClient) -> None:
+    created = create(client)
+    client.delete(f"{URL}/{created['id']}")
+
+    again = client.delete(f"{URL}/{created['id']}")
+    unknown = client.delete(f"{URL}/{uuid4()}")
+
+    assert again.status_code == unknown.status_code == 404
+    assert unknown.json()["type"] == problem_type("template-not-found")
+
+
+# --- logging ---------------------------------------------------------------------------------------
+
+
+def test_creating_a_template_logs_its_id_and_size_but_not_its_content(
+    client: TestClient, capsys: pytest.CaptureFixture[str]
+) -> None:
+
+    configure_logging(make_settings(log_format="json"))
+    marker = "MARKER-4417"
+
+    created = create(client, name=marker, fields=[field_body(name="a", description=marker)])
+
+    out = capsys.readouterr().out
+    assert "template_created" in out
+    assert created["id"] in out
+    assert marker not in out

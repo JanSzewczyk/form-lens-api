@@ -17,6 +17,127 @@
         "title": "Body_parse_document",
         "type": "object"
       },
+      "FieldSpec": {
+        "additionalProperties": false,
+        "description": "One field of a form, as a client sends it and as it is returned.",
+        "properties": {
+          "allowed_values": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The values a `choice` field may take; required for `choice`, refused for other types.",
+            "examples": [
+              [
+                "paid",
+                "unpaid"
+              ]
+            ],
+            "title": "Allowed Values"
+          },
+          "description": {
+            "default": "",
+            "description": "How the field appears on the form (its label, where it sits). It helps the extraction.",
+            "examples": [
+              "Invoice number, top right"
+            ],
+            "title": "Description",
+            "type": "string"
+          },
+          "maximum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Largest value of a `number` or `integer` field.",
+            "examples": [
+              10000
+            ],
+            "title": "Maximum"
+          },
+          "minimum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Smallest value of a `number` or `integer` field.",
+            "examples": [
+              0
+            ],
+            "title": "Minimum"
+          },
+          "name": {
+            "description": "The key of the field in the extraction result: lower case letters, digits and `_`, starting with a letter. Unique within the template.",
+            "examples": [
+              "invoice_number"
+            ],
+            "title": "Name",
+            "type": "string"
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Regular expression a `text` value must match (at most 200 characters).",
+            "examples": [
+              "^[0-9]{11}$"
+            ],
+            "title": "Pattern"
+          },
+          "required": {
+            "default": false,
+            "description": "Whether a completed form must have a value. A result with a missing required field is still delivered and lists the field under `missing_required`.",
+            "title": "Required",
+            "type": "boolean"
+          },
+          "type": {
+            "$ref": "#/components/schemas/FieldType",
+            "description": "What the field holds.",
+            "examples": [
+              "text"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ],
+        "title": "FieldSpec",
+        "type": "object"
+      },
+      "FieldType": {
+        "description": "What a field holds.",
+        "enum": [
+          "text",
+          "number",
+          "integer",
+          "boolean",
+          "date",
+          "choice"
+        ],
+        "title": "FieldType",
+        "type": "string"
+      },
       "HealthResponse": {
         "description": "Liveness probe payload.",
         "properties": {
@@ -203,6 +324,218 @@
           "checks"
         ],
         "title": "ReadinessResponse",
+        "type": "object"
+      },
+      "TemplateCreate": {
+        "additionalProperties": false,
+        "description": "The body of `POST /v1/templates`.",
+        "properties": {
+          "description": {
+            "default": "",
+            "description": "What the form is.",
+            "examples": [
+              "A supplier invoice with a total and a due date."
+            ],
+            "title": "Description",
+            "type": "string"
+          },
+          "fields": {
+            "description": "The fields to extract, 1 to 50, with unique names.",
+            "items": {
+              "$ref": "#/components/schemas/FieldSpec"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "name": {
+            "description": "Name of the form, for people.",
+            "examples": [
+              "Invoice"
+            ],
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "fields"
+        ],
+        "title": "TemplateCreate",
+        "type": "object"
+      },
+      "TemplatePage": {
+        "description": "One page of templates.",
+        "properties": {
+          "items": {
+            "description": "The items on this page.",
+            "items": {
+              "$ref": "#/components/schemas/TemplateResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "description": "Page size that was applied.",
+            "examples": [
+              20
+            ],
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Number of items skipped.",
+            "examples": [
+              0
+            ],
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Number of items across all pages.",
+            "examples": [
+              1
+            ],
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "TemplatePage",
+        "type": "object"
+      },
+      "TemplateReplace": {
+        "additionalProperties": false,
+        "description": "The body of `PUT /v1/templates/{template_id}`; it replaces everything and raises the version.",
+        "properties": {
+          "description": {
+            "default": "",
+            "description": "What the form is.",
+            "examples": [
+              "A supplier invoice with a total and a due date."
+            ],
+            "title": "Description",
+            "type": "string"
+          },
+          "fields": {
+            "description": "The fields to extract, 1 to 50, with unique names.",
+            "items": {
+              "$ref": "#/components/schemas/FieldSpec"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "name": {
+            "description": "Name of the form, for people.",
+            "examples": [
+              "Invoice"
+            ],
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "fields"
+        ],
+        "title": "TemplateReplace",
+        "type": "object"
+      },
+      "TemplateResponse": {
+        "description": "A stored template.",
+        "properties": {
+          "created_at": {
+            "description": "When the template was created (UTC).",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "description": "What the form is.",
+            "examples": [
+              "A supplier invoice."
+            ],
+            "title": "Description",
+            "type": "string"
+          },
+          "fields": {
+            "description": "The fields to extract.",
+            "items": {
+              "$ref": "#/components/schemas/FieldSpec"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "id": {
+            "description": "Identifier of the template.",
+            "examples": [
+              "0192f5e0-5a3b-7c11-9d2e-3f6a1b2c4d5e"
+            ],
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "json_schema": {
+            "additionalProperties": true,
+            "description": "The JSON Schema every extraction with this template must satisfy: one required key per field, each of which may be `null`.",
+            "examples": [
+              {
+                "properties": {
+                  "invoice_number": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              }
+            ],
+            "title": "Json Schema",
+            "type": "object"
+          },
+          "name": {
+            "description": "Name of the form.",
+            "examples": [
+              "Invoice"
+            ],
+            "title": "Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "When the template was last replaced (UTC).",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "description": "Starts at 1 and grows by one with every replacement.",
+            "examples": [
+              1
+            ],
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "version",
+          "fields",
+          "json_schema",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "TemplateResponse",
         "type": "object"
       },
       "ValidationIssue": {
@@ -439,6 +772,306 @@
           "documents"
         ]
       }
+    },
+    "/v1/templates": {
+      "get": {
+        "description": "List templates, oldest first, one page at a time.",
+        "operationId": "list_templates",
+        "parameters": [
+          {
+            "description": "Items per page, 1 to 100. Defaults to the configured page size (20 unless DEFAULT_PAGE_SIZE is set).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 100,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Items per page, 1 to 100. Defaults to the configured page size (20 unless DEFAULT_PAGE_SIZE is set).",
+              "examples": [
+                20
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "description": "Items to skip from the start of the list.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Items to skip from the start of the list.",
+              "examples": [
+                0
+              ],
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplatePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Request validation failed (`validation-error`)"
+          }
+        },
+        "summary": "List Templates",
+        "tags": [
+          "templates"
+        ]
+      },
+      "post": {
+        "description": "Create a template.\n\nThe response carries the JSON Schema generated from the fields. Every field is a required key of the\nresult that may be `null`; the schema does not depend on which fields are `required` on the form.",
+        "operationId": "create_template",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "The request body could not be read as text."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "The body is not valid (`validation-error`), or the template breaks a rule: duplicate or unsafe field names, a choice without values, a range on a non-number, a bad pattern, too many fields (`invalid-template`)."
+          }
+        },
+        "summary": "Create Template",
+        "tags": [
+          "templates"
+        ]
+      }
+    },
+    "/v1/templates/{template_id}": {
+      "delete": {
+        "description": "Delete a template.",
+        "operationId": "delete_template",
+        "parameters": [
+          {
+            "description": "Identifier of the template.",
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "description": "Identifier of the template.",
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Template not found (`template-not-found`)"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Request validation failed (`validation-error`)"
+          }
+        },
+        "summary": "Delete Template",
+        "tags": [
+          "templates"
+        ]
+      },
+      "get": {
+        "description": "Return one template.",
+        "operationId": "get_template",
+        "parameters": [
+          {
+            "description": "Identifier of the template.",
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "description": "Identifier of the template.",
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Template not found (`template-not-found`)"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Request validation failed (`validation-error`)"
+          }
+        },
+        "summary": "Get Template",
+        "tags": [
+          "templates"
+        ]
+      },
+      "put": {
+        "description": "Replace a template's name, description and fields; the version goes up by one.\n\nThe body is the whole template, not a patch.",
+        "operationId": "replace_template",
+        "parameters": [
+          {
+            "description": "Identifier of the template.",
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "description": "Identifier of the template.",
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateReplace"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "The request body could not be read as text."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Template not found (`template-not-found`)"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "The body or the id is not valid (`validation-error`), or the template breaks a rule (`invalid-template`)."
+          }
+        },
+        "summary": "Replace Template",
+        "tags": [
+          "templates"
+        ]
+      }
     }
   },
   "servers": [
@@ -455,6 +1088,10 @@
     {
       "description": "Upload a document and read its text. The model runs on the server; nothing leaves it.",
       "name": "documents"
+    },
+    {
+      "description": "The fields a form has. An extraction reads a document against one template.",
+      "name": "templates"
     }
   ]
 }

@@ -195,3 +195,20 @@ def test_a_pattern_the_linear_time_engine_cannot_run_is_refused_when_the_field_i
 
 def test_a_pattern_the_linear_time_engine_runs_is_accepted_even_if_python_re_refuses_it() -> None:
     assert TemplateFieldFactory.build(pattern=r"\p{L}+").pattern == r"\p{L}+"
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [{"description": "a\x00b"}, {"pattern": "a\x00"}, {"type": FieldType.CHOICE, "allowed_values": ("a\x00",)}],
+    ids=["description", "pattern", "allowed-value"],
+)
+def test_a_field_text_with_a_nul_character_is_refused(kwargs: dict[str, Any]) -> None:
+    with pytest.raises(InvalidTemplate, match="no NUL character"):
+        TemplateFieldFactory.build(name="code", **kwargs)
+
+
+def test_a_template_name_or_description_with_a_nul_character_is_refused() -> None:
+    with pytest.raises(InvalidTemplate, match="no NUL character"):
+        TemplateDraftFactory.build(name="a\x00b")
+    with pytest.raises(InvalidTemplate, match="no NUL character"):
+        TemplateDraftFactory.build(description="a\x00b")

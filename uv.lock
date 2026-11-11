@@ -696,11 +696,13 @@ source = { editable = "." }
 default-groups = ["dev", "test"]
 dependencies = [
     { name = "alembic" },
+    { name = "anyio" },
     { name = "docling", extra = ["vlm"] },
     { name = "fastapi" },
     { name = "httpx2" },
     { name = "jsonschema" },
     { name = "pydantic" },
+    { name = "pydantic-core" },
     { name = "pydantic-settings" },
     { name = "python-multipart" },
     { name = "sqlalchemy" },
@@ -729,6 +731,7 @@ test = [
     { name = "coverage" },
     { name = "factory-boy" },
     { name = "hypothesis" },
+    { name = "pillow" },
     { name = "pytest" },
     { name = "pytest-randomly" },
     { name = "pytest-timeout" },
@@ -737,11 +740,13 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.20.1" },
+    { name = "anyio", specifier = ">=4.16.0" },
     { name = "docling", extras = ["vlm"], specifier = ">=2.149.0" },
     { name = "fastapi", specifier = ">=0.162.2" },
     { name = "httpx2", specifier = ">=2.16.0" },
     { name = "jsonschema", specifier = ">=4.26.0" },
     { name = "pydantic", specifier = ">=2.14.3" },
+    { name = "pydantic-core", specifier = ">=2.50.4" },
     { name = "pydantic-settings", specifier = ">=2.16.2" },
     { name = "python-multipart", specifier = ">=0.0.33" },
     { name = "sqlalchemy", specifier = ">=2.1.8" },
@@ -766,6 +771,7 @@ test = [
     { name = "coverage", specifier = ">=7.17.2" },
     { name = "factory-boy", specifier = ">=3.3.3" },
     { name = "hypothesis", specifier = ">=6.170.15" },
+    { name = "pillow", specifier = ">=13.0.0" },
     { name = "pytest", specifier = ">=9.2.0" },
     { name = "pytest-randomly", specifier = ">=5.0.0" },
     { name = "pytest-timeout", specifier = ">=2.4.0" },

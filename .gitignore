@@ -17,3 +17,6 @@ htmlcov/
 .schemathesis/
 # Downloaded document models (make download-models)
 models/
+*.db
+*.db-wal
+*.db-shm

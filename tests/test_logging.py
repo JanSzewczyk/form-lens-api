@@ -18,9 +18,11 @@ from formlens.main import create_app
 from tests.conftest import make_settings
 
 
-def lines(capsys: pytest.CaptureFixture[str]) -> list[dict[str, Any]]:
+def lines(capsys: pytest.CaptureFixture[str], *, keep_client_noise: bool = False) -> list[dict[str, Any]]:
     out = capsys.readouterr().out
     parsed = [json.loads(line) for line in out.splitlines() if line.startswith("{")]
+    if keep_client_noise:  # a test that drives the httpx loggers itself, with no test client
+        return parsed
     return [line for line in parsed if not line["logger"].startswith("httpx")]  # test client noise
 
 
@@ -116,7 +118,23 @@ def test_stdlib_records_keep_their_extras_masked_and_without_uvicorns_duplicate(
 
 @pytest.mark.parametrize(
     "key",
-    ["filename", "file_name", "content", "markdown", "plain_text", "extracted_text", "Content", "upload_filename"],
+    [
+        "filename",
+        "file_name",
+        "content",
+        "markdown",
+        "plain_text",
+        "extracted_text",
+        "Content",
+        "upload_filename",
+        "result",
+        "prompt",
+        "llm_output",
+        "response",
+        "fields",
+        "values",
+        "extracted_values",
+    ],
 )
 def test_keys_that_could_hold_a_document_or_its_name_are_masked(capsys: pytest.CaptureFixture[str], key: str) -> None:
     configure_logging(make_settings(log_format="json"))
@@ -152,7 +170,20 @@ def test_content_also_masks_the_content_headers_and_nothing_else_of_a_mapping(
     assert line["headers"] == {"content-type": "***", "content_length": "***", "accept": "*/*"}
 
 
-QUIET_LOGGERS = ["docling", "docling_core", "docling_parse", "docling_ibm_models", "transformers", "huggingface_hub"]
+QUIET_LOGGERS = [
+    "docling",
+    "docling_core",
+    "docling_parse",
+    "docling_ibm_models",
+    "transformers",
+    "huggingface_hub",
+    "httpx",
+    "httpx2",
+    "httpcore",
+    "httpcore2",
+    "sqlalchemy",
+    "alembic",
+]
 
 
 @pytest.fixture
@@ -165,7 +196,10 @@ def restore_logger_levels() -> Iterator[None]:
         logging.getLogger(name).setLevel(level)
 
 
-@pytest.mark.parametrize("name", [*QUIET_LOGGERS, "PIL.PngImagePlugin", "mlx_vlm.utils", "transformers.modeling_utils"])
+@pytest.mark.parametrize(
+    "name",
+    [*QUIET_LOGGERS, "PIL.PngImagePlugin", "mlx_vlm.utils", "transformers.modeling_utils", "sqlalchemy.engine.Engine"],
+)
 def test_the_document_stack_logs_at_info_never_reach_the_output(
     restore_logger_levels: None, capsys: pytest.CaptureFixture[str], name: str
 ) -> None:
@@ -174,7 +208,7 @@ def test_the_document_stack_logs_at_info_never_reach_the_output(
     logging.getLogger(name).info("loading %s", "upload.pdf")
     logging.getLogger(name).warning("careful")
 
-    [line] = lines(capsys)
+    [line] = lines(capsys, keep_client_noise=True)
     assert (line["event"], line["logger"]) == ("careful", name)
 
 

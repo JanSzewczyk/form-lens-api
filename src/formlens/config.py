@@ -1,10 +1,12 @@
 """Application settings loaded from environment variables."""
 
+import ipaddress
 from pathlib import Path
-from typing import Literal, cast
+from typing import Final, Literal, Self, cast
+from urllib.parse import urlsplit
 
 from fastapi import Request
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from formlens.modelspec import VlmBackend
@@ -12,6 +14,25 @@ from formlens.modelspec import VlmBackend
 type Environment = Literal["local", "test", "production"]
 type LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 type LogFormat = Literal["auto", "json", "console"]
+
+# A name that reaches the model server from inside a container; it has dots, so it is listed.
+_DOCKER_HOST: Final = "host.docker.internal"
+
+
+def _is_local_host(host: str) -> bool:
+    """Tell whether `host` is a machine of the operator's own: loopback, a private address or a plain name.
+
+    A document is sent to this host, so it must not be somebody else's server: a private or loopback
+    IP literal, a name without a dot (`localhost`, a compose service such as `ollama`) or
+    `host.docker.internal` is accepted; any other dotted name is refused.
+    """
+    if host == _DOCKER_HOST:
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return "." not in host
+    return address.is_loopback or address.is_private
 
 
 class ModelSettings(BaseSettings):
@@ -97,6 +118,91 @@ class Settings(ModelSettings):
         ge=1,
         description="Seconds one document may take to parse before the request fails with 500 `parse-failed`.",
     )
+
+    db_url: str = Field(
+        default="sqlite:///./formlens.db",
+        description=(
+            "SQLAlchemy URL of the database. Only SQLite is supported; a relative file is read from the "
+            "working directory. Run `make migrate` after changing it."
+        ),
+    )
+
+    llm_base_url: str = Field(
+        default="http://localhost:11434/v1",
+        description=(
+            "OpenAI-compatible endpoint of the local language model (Ollama). The documents are sent there, so "
+            "only a loopback or private address, a name without a dot or `host.docker.internal` is accepted."
+        ),
+    )
+    llm_model: str = Field(
+        default="qwen3:8b", min_length=1, description="Name of the language model that reads the parsed text."
+    )
+    llm_timeout_seconds: int = Field(
+        default=120, ge=1, description="Seconds one call to the language model may take; below the job timeout."
+    )
+    llm_max_input_chars: int = Field(
+        default=20000, ge=1, description="Longest document text sent to the model, in characters; a longer one fails."
+    )
+
+    result_ttl_hours: int = Field(
+        default=24, ge=1, description="Hours a finished extraction stays readable before it is deleted."
+    )
+    job_timeout_seconds: int = Field(
+        default=600,
+        ge=1,
+        description="Seconds one extraction job may run, from claim to result; above the parse timeout.",
+    )
+    job_max_attempts: int = Field(
+        default=2, ge=1, description="Times a job is started before it fails; 2 lets a restart run it again."
+    )
+    job_poll_interval_seconds: float = Field(
+        default=2.0, gt=0, description="Seconds the worker waits before it looks for a job again when idle."
+    )
+    queue_max_pending: int = Field(
+        default=100, ge=1, description="Extractions that may wait at once; one more is refused with 503."
+    )
+
+    @field_validator("db_url")
+    @classmethod
+    def _require_sqlite(cls, value: str) -> str:
+        """Refuse a URL of another database: the transactions and the migrations are written for SQLite."""
+        if not value.startswith("sqlite:"):
+            msg = "must be a sqlite: URL, for example sqlite:///./formlens.db"
+            raise ValueError(msg)
+        return value
+
+    @field_validator("llm_base_url")
+    @classmethod
+    def _require_a_local_model_server(cls, value: str) -> str:
+        """Refuse an endpoint that is not on this machine or its private network, and a URL with credentials."""
+        try:
+            parts = urlsplit(value)
+            host = parts.hostname
+            _ = parts.port  # a port that is not a number raises here
+        except ValueError as exc:
+            msg = "must be an http(s) URL with a host, for example http://localhost:11434/v1"
+            raise ValueError(msg) from exc
+        if parts.scheme not in {"http", "https"} or not host:
+            msg = "must be an http(s) URL with a host, for example http://localhost:11434/v1"
+            raise ValueError(msg)
+        if parts.username is not None or parts.password is not None:
+            msg = "must not contain a user name or password"
+            raise ValueError(msg)
+        if not _is_local_host(host):
+            msg = "must point to a loopback or private address, a name without a dot or host.docker.internal"
+            raise ValueError(msg)
+        return value
+
+    @model_validator(mode="after")
+    def _order_the_timeouts(self) -> Self:
+        """Keep the timeouts nested: parse < job, and the model call < job."""
+        if self.job_timeout_seconds <= self.parse_timeout_seconds:
+            msg = "job_timeout_seconds must be greater than parse_timeout_seconds"
+            raise ValueError(msg)
+        if self.llm_timeout_seconds >= self.job_timeout_seconds:
+            msg = "llm_timeout_seconds must be less than job_timeout_seconds"
+            raise ValueError(msg)
+        return self
 
     @property
     def resolved_log_format(self) -> Literal["json", "console"]:

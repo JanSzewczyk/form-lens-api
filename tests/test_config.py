@@ -37,6 +37,21 @@ def test_model_settings_default_to_the_local_apple_silicon_setup() -> None:
     assert settings.parse_timeout_seconds == 300
 
 
+def test_job_and_model_settings_default_to_a_local_sqlite_file_and_a_local_ollama() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.db_url == "sqlite:///./formlens.db"
+    assert settings.llm_base_url == "http://localhost:11434/v1"
+    assert settings.llm_model == "qwen3:8b"
+    assert settings.llm_timeout_seconds == 120
+    assert settings.llm_max_input_chars == 20000
+    assert settings.result_ttl_hours == 24
+    assert settings.job_timeout_seconds == 600
+    assert settings.job_max_attempts == 2
+    assert settings.job_poll_interval_seconds == 2.0
+    assert settings.queue_max_pending == 100
+
+
 def test_a_copied_env_example_keeps_the_docs_off_in_production() -> None:
     """`cp .env.example .env` is the documented first step; it must not publish /docs."""
     settings = Settings(_env_file=ENV_EXAMPLE, environment="production")
@@ -137,6 +152,16 @@ NON_DEFAULT_ENVIRONMENT = {
     "MAX_UPLOAD_MB": "5",
     "MAX_CONCURRENCY": "3",
     "PARSE_TIMEOUT_SECONDS": "7",
+    "DB_URL": "sqlite:////from/the/shell.db",
+    "LLM_BASE_URL": "http://ollama:11435/v1",
+    "LLM_MODEL": "from-the-shell:1b",
+    "LLM_TIMEOUT_SECONDS": "11",
+    "LLM_MAX_INPUT_CHARS": "99",
+    "RESULT_TTL_HOURS": "5",
+    "JOB_TIMEOUT_SECONDS": "50",
+    "JOB_MAX_ATTEMPTS": "4",
+    "JOB_POLL_INTERVAL_SECONDS": "0.5",
+    "QUEUE_MAX_PENDING": "3",
 }
 
 
@@ -358,3 +383,127 @@ def test_model_settings_refuse_an_empty_models_path() -> None:
 def test_model_settings_refuse_an_unknown_backend(backend: str) -> None:
     with pytest.raises(ValidationError, match="vlm_backend"):
         ModelSettings(_env_file=None, vlm_backend=backend)  # type: ignore[arg-type]  # the point of the test
+
+
+# --- Extraction settings: database, model endpoint, job limits -------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://localhost:11434/v1",
+        "http://127.0.0.1:11434/v1",
+        "http://127.8.8.8/v1",
+        "http://[::1]:11434/v1",
+        "http://192.168.1.20:11434/v1",
+        "http://10.0.0.5/v1",
+        "http://172.16.4.4/v1",
+        "http://ollama:11434/v1",
+        "https://host.docker.internal:11434/v1",
+    ],
+    ids=[
+        "localhost",
+        "loopback",
+        "loopback-range",
+        "loopback-v6",
+        "private-192",
+        "private-10",
+        "private-172",
+        "dotless-service-name",
+        "docker-host",
+    ],
+)
+def test_the_model_endpoint_may_be_on_this_machine_or_its_private_network(url: str) -> None:
+    assert make_settings(llm_base_url=url).llm_base_url == url
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://api.openai.com/v1",
+        "http://example.com:11434/v1",
+        "http://8.8.8.8/v1",
+        "http://[2001:4860:4860::8888]/v1",
+        "http://ollama.internal.example.org/v1",
+        "http://host.docker.internal.evil.example/v1",
+        "http://user:pass@localhost:11434/v1",
+        "ftp://localhost/v1",
+        "localhost:11434/v1",
+        "http:///v1",
+        "http://localhost:notaport/v1",
+        "",
+    ],
+    ids=[
+        "openai",
+        "dotted-name",
+        "public-ipv4",
+        "public-ipv6",
+        "dotted-internal",
+        "docker-lookalike",
+        "credentials",
+        "scheme",
+        "no-scheme",
+        "no-host",
+        "bad-port",
+        "empty",
+    ],
+)
+def test_a_model_endpoint_that_could_send_documents_elsewhere_is_refused(url: str) -> None:
+    with pytest.raises(ValidationError, match="llm_base_url"):
+        make_settings(llm_base_url=url)
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["postgresql://u@localhost/db", "mysql://localhost/db", "formlens.db", ""],
+    ids=["postgres", "mysql", "bare-path", "empty"],
+)
+def test_only_a_sqlite_url_is_accepted_as_the_database(url: str) -> None:
+    with pytest.raises(ValidationError, match="db_url"):
+        make_settings(db_url=url)
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["sqlite:///./formlens.db", "sqlite:////data/formlens.db", "sqlite://"],
+    ids=["relative", "absolute", "memory"],
+)
+def test_a_sqlite_url_is_accepted_as_the_database(url: str) -> None:
+    assert make_settings(db_url=url).db_url == url
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("llm_model", ""),
+        ("llm_timeout_seconds", 0),
+        ("llm_max_input_chars", 0),
+        ("result_ttl_hours", 0),
+        ("job_timeout_seconds", 0),
+        ("job_max_attempts", 0),
+        ("job_poll_interval_seconds", 0),
+        ("job_poll_interval_seconds", -1.0),
+        ("queue_max_pending", 0),
+    ],
+    ids=["model", "llm-timeout", "max-input", "ttl", "job-timeout", "attempts", "poll-zero", "poll-negative", "queue"],
+)
+def test_an_invalid_job_or_model_value_is_rejected(field: str, value: object) -> None:
+    with pytest.raises(ValidationError, match=field):
+        make_settings(**{field: value})
+
+
+def test_the_job_timeout_must_exceed_the_parse_timeout() -> None:
+    with pytest.raises(ValidationError, match="job_timeout_seconds must be greater than parse_timeout_seconds"):
+        make_settings(parse_timeout_seconds=300, job_timeout_seconds=300)
+
+    assert (
+        make_settings(parse_timeout_seconds=300, job_timeout_seconds=301, llm_timeout_seconds=100).job_timeout_seconds
+        == 301
+    )
+
+
+def test_the_model_timeout_must_stay_below_the_job_timeout() -> None:
+    with pytest.raises(ValidationError, match="llm_timeout_seconds must be less than job_timeout_seconds"):
+        make_settings(llm_timeout_seconds=600, job_timeout_seconds=600)
+
+    assert make_settings(llm_timeout_seconds=599, job_timeout_seconds=600).llm_timeout_seconds == 599

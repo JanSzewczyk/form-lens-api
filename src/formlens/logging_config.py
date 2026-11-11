@@ -10,9 +10,10 @@ from structlog.types import EventDict, Processor
 
 from formlens.config import Settings
 
-# A key is masked when it contains one of these parts. The last six keep a document, or its name, out of
-# the logs: `content` also masks `content_length` and a `content-type` header, and bare `text` is left
-# out on purpose, because it would mask `context`.
+# A key is masked when it contains one of these parts. From `filename` to `extracted_text` they keep a
+# document, or its name, out of the logs: `content` also masks `content_length` and a `content-type`
+# header, and bare `text` is left out on purpose, because it would mask `context`. The last six keep
+# the prompt, the model's answer and the extracted values out; a field's value is personal data.
 SENSITIVE_PARTS: Final = (
     "password",
     "token",
@@ -26,6 +27,12 @@ SENSITIVE_PARTS: Final = (
     "markdown",
     "plain_text",
     "extracted_text",
+    "result",
+    "prompt",
+    "llm_output",
+    "response",
+    "fields",
+    "values",
 )
 REDACTED: Final = "***"
 _HANDLER_TAG: Final = "_formlens_handler"
@@ -44,6 +51,12 @@ _QUIET_LOGGERS: Final = (
     "PIL",
     "mlx",
     "mlx_vlm",
+    "httpx",
+    "httpx2",
+    "httpcore",
+    "httpcore2",
+    "sqlalchemy",
+    "alembic",
 )
 # The multipart parser warns about framing it cannot read and quotes the offending body byte
 # ("Expected boundary character 45, got 137"). That byte is document content, so these loggers are held

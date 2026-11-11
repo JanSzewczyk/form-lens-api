@@ -513,3 +513,70 @@ def test_a_nul_character_in_a_name_is_a_422_invalid_template(client: TestClient)
     response = client.post(URL, json=template_body(name="Order\u0000form"))
 
     assert (response.status_code, response.json()["type"]) == (422, problem_type("invalid-template"))
+
+
+# --- the cap on the body ---------------------------------------------------------------------------
+
+
+def big_body(kilobytes: int) -> bytes:
+    """A JSON object of about this many kilobytes, as the template routes would read it."""
+    return json.dumps({"name": "x" * (kilobytes * 1024), "fields": []}).encode()
+
+
+@pytest.mark.parametrize("method", ["post", "put"])
+def test_a_template_body_over_the_limit_is_a_413_body_too_large_and_nothing_is_stored(db_url: str, method: str) -> None:
+    app = create_app(
+        make_settings(db_url=db_url, max_json_body_kb=4), parser_factory=lambda _: FakeParser(), start_worker=False
+    )
+    try:
+        with TestClient(app) as client:
+            created = create(client)
+            url = URL if method == "post" else f"{URL}/{created['id']}"
+            response = client.request(method, url, content=big_body(8), headers={"Content-Type": "application/json"})
+            listed = client.get(URL).json()
+    finally:
+        app.state.database.dispose()
+
+    assert response.status_code == 413
+    assert response.headers["content-type"] == PROBLEM_MEDIA_TYPE
+    assert response.json()["type"] == problem_type("body-too-large")
+    assert response.json()["detail"] == "The request body is larger than the 4 KB limit."
+    assert listed["total"] == 1  # only the one made above
+
+
+def test_a_chunked_template_body_over_the_limit_is_a_413(db_url: str) -> None:
+    app = create_app(
+        make_settings(db_url=db_url, max_json_body_kb=4), parser_factory=lambda _: FakeParser(), start_worker=False
+    )
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                URL,
+                content=(piece for piece in (big_body(8)[:3000], big_body(8)[3000:])),  # no Content-Length
+                headers={"Content-Type": "application/json"},
+            )
+    finally:
+        app.state.database.dispose()
+
+    assert (response.status_code, response.json()["type"]) == (413, problem_type("body-too-large"))
+
+
+def test_a_template_body_under_the_limit_is_read_as_before(client: TestClient) -> None:
+    assert client.post(URL, json=template_body()).status_code == 201
+
+
+def test_the_default_limit_is_large_enough_for_the_largest_valid_template(client: TestClient) -> None:
+    fields = [field_body(name=f"f{i}", description="d" * 300) for i in range(50)]
+
+    response = client.post(URL, json=template_body(fields=fields))
+
+    assert response.status_code == 201
+
+
+def test_a_get_or_a_delete_has_no_body_cap_and_a_413_is_documented_on_both_writes(client: TestClient) -> None:
+    spec = client.app.openapi()  # type: ignore[attr-defined]  # the app of the client
+
+    assert "413" in spec["paths"]["/v1/templates"]["post"]["responses"]
+    assert "413" in spec["paths"]["/v1/templates/{template_id}"]["put"]["responses"]
+    assert "413" not in spec["paths"]["/v1/templates/{template_id}"]["get"]["responses"]
+    assert "413" not in spec["paths"]["/v1/templates/{template_id}"]["delete"]["responses"]

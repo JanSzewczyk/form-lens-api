@@ -1265,6 +1265,16 @@
             },
             "description": "The request body could not be read as text."
           },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Request body too large (`body-too-large`)"
+          },
           "422": {
             "content": {
               "application/problem+json": {
@@ -1441,6 +1451,16 @@
               }
             },
             "description": "Template not found (`template-not-found`)"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Request body too large (`body-too-large`)"
           },
           "422": {
             "content": {

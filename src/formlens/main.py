@@ -45,7 +45,7 @@ from formlens.problems import add_problem_handlers, register_domain_errors
 from formlens.query import reject_repeated_query_parameters
 from formlens.templates.errors import ERRORS as TEMPLATE_ERRORS
 from formlens.templates.repository import SqliteTemplateRepository
-from formlens.templates.router import TEMPLATES_TAG
+from formlens.templates.router import TEMPLATES_TAG, is_template_write
 from formlens.templates.router import router as templates_router
 
 log = structlog.get_logger(__name__)
@@ -200,7 +200,11 @@ def create_app(
     # then the 500 answer, then the body cap, so a 500 or a 413 carries the request id and the
     # CORS headers.
     app.add_middleware(
-        BodyLimitMiddleware, paths=frozenset({PARSE_PATH, EXTRACTIONS_PATH}), max_upload_mb=settings.max_upload_mb
+        BodyLimitMiddleware,
+        paths=frozenset({PARSE_PATH, EXTRACTIONS_PATH}),
+        max_upload_mb=settings.max_upload_mb,
+        json_rule=is_template_write,
+        max_json_kb=settings.max_json_body_kb,
     )
     app.add_middleware(UnhandledErrorMiddleware)
     if settings.cors_origins:

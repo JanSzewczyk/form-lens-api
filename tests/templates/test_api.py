@@ -195,6 +195,22 @@ def test_a_body_that_is_not_json_is_a_422_and_one_that_is_not_text_is_a_400(clie
     assert not_text.status_code == 400
 
 
+def test_a_json_string_with_a_lone_surrogate_is_a_422_invalid_template_not_a_500(client: TestClient) -> None:
+    body = b'{"name": "\\ud800", "fields": [{"name": "a", "type": "text"}]}'
+
+    response = client.post(URL, content=body, headers={"Content-Type": "application/json"})
+
+    assert response.status_code == 422
+    assert response.json()["type"] == problem_type("invalid-template")
+
+
+def test_a_regular_expression_the_engine_cannot_compile_is_a_422_not_a_500(client: TestClient) -> None:
+    response = client.post(URL, json=template_body(fields=[field_body(pattern="a{4294967295}")]))
+
+    assert response.status_code == 422
+    assert response.json()["type"] == problem_type("invalid-template")
+
+
 def test_a_not_a_number_in_a_range_is_refused(client: TestClient) -> None:
     response = client.post(
         URL,

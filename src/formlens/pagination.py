@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field
 from formlens.config import Settings, get_settings
 
 MAX_PAGE_SIZE = 100
+# SQLite binds an integer of 63 bits; a larger offset would fail inside the driver, so it is refused as input.
+MAX_OFFSET = 2**31 - 1
 
 
 class Page[T](BaseModel):
@@ -44,7 +46,7 @@ def get_page_params(
     ] = None,
     offset: Annotated[
         int,
-        Query(ge=0, description="Items to skip from the start of the list.", examples=[0]),
+        Query(ge=0, le=MAX_OFFSET, description="Items to skip from the start of the list.", examples=[0]),
     ] = 0,
 ) -> PageParams:
     """Read `limit` and `offset`, applying the configured default page size."""

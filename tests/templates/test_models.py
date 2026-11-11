@@ -63,6 +63,14 @@ def test_a_field_of_every_type_is_valid_with_what_its_type_allows() -> None:
         ),
         pytest.param({"type": FieldType.TEXT, "pattern": "(unclosed"}, "not a valid regular", id="pattern-invalid"),
         pytest.param(
+            {"type": FieldType.TEXT, "pattern": "a{4294967295}"}, "not a valid regular", id="pattern-repeat-overflow"
+        ),
+        pytest.param({"type": FieldType.TEXT, "description": "\ud800"}, "valid Unicode", id="description-surrogate"),
+        pytest.param({"type": FieldType.TEXT, "pattern": "\ud800"}, "valid Unicode", id="pattern-surrogate"),
+        pytest.param(
+            {"type": FieldType.CHOICE, "allowed_values": ("a", "\ud800")}, "valid Unicode", id="value-surrogate"
+        ),
+        pytest.param(
             {"type": FieldType.TEXT, "description": "d" * 301}, "description is longer", id="description-long"
         ),
     ],
@@ -125,6 +133,13 @@ def test_two_fields_with_the_same_name_are_refused_and_the_name_is_given() -> No
         TemplateDraftFactory.build(fields=fields)
 
     assert raised.value.field == "total"
+
+
+def test_a_template_name_or_description_with_a_lone_surrogate_is_refused() -> None:
+    with pytest.raises(InvalidTemplate, match="valid Unicode"):
+        TemplateDraftFactory.build(name="\ud800")
+    with pytest.raises(InvalidTemplate, match="valid Unicode"):
+        TemplateDraftFactory.build(description="\ud800")
 
 
 @pytest.mark.parametrize("name", ["", "   ", "n" * 101], ids=["empty", "blank", "long"])

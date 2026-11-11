@@ -123,7 +123,34 @@ class ModelSettings(BaseSettings):
         return value
 
 
-class Settings(ModelSettings):
+class LlmSettings(BaseSettings):
+    """Which language model the service talks to and where it runs.
+
+    The service, `make evaluate` and the `slow` tests all read these two settings through this class, so a `.env`
+    moves them together; it holds no other setting, so an unrelated bad value in `.env` cannot stop it.
+    """
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    llm_base_url: str = Field(
+        default="http://localhost:11434/v1",
+        description=(
+            "OpenAI-compatible endpoint of the local language model (Ollama). The documents are sent there, so "
+            "only a loopback or private address, a name without a dot or `host.docker.internal` is accepted."
+        ),
+    )
+    llm_model: str = Field(
+        default="qwen3:8b", min_length=1, description="Name of the language model that reads the parsed text."
+    )
+
+    @field_validator("llm_base_url")
+    @classmethod
+    def _require_a_local_model_server(cls, value: str) -> str:
+        """Refuse an endpoint that is not on this machine or its private network, and a URL with credentials."""
+        return require_local_model_url(value)
+
+
+class Settings(ModelSettings, LlmSettings):
     """Runtime configuration, read from the environment or a local `.env` file.
 
     Tests build it with `Settings(_env_file=None, ...)` so a developer's `.env` never leaks in.
@@ -180,16 +207,6 @@ class Settings(ModelSettings):
         ),
     )
 
-    llm_base_url: str = Field(
-        default="http://localhost:11434/v1",
-        description=(
-            "OpenAI-compatible endpoint of the local language model (Ollama). The documents are sent there, so "
-            "only a loopback or private address, a name without a dot or `host.docker.internal` is accepted."
-        ),
-    )
-    llm_model: str = Field(
-        default="qwen3:8b", min_length=1, description="Name of the language model that reads the parsed text."
-    )
     llm_timeout_seconds: int = Field(
         default=120, ge=1, description="Seconds one call to the language model may take; below the job timeout."
     )
@@ -223,12 +240,6 @@ class Settings(ModelSettings):
             msg = "must be a sqlite: URL, for example sqlite:///./formlens.db"
             raise ValueError(msg)
         return value
-
-    @field_validator("llm_base_url")
-    @classmethod
-    def _require_a_local_model_server(cls, value: str) -> str:
-        """Refuse an endpoint that is not on this machine or its private network, and a URL with credentials."""
-        return require_local_model_url(value)
 
     @model_validator(mode="after")
     def _order_the_timeouts(self) -> Self:

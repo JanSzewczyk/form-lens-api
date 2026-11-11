@@ -98,13 +98,11 @@ def test_a_template_is_still_there_after_the_app_is_rebuilt_on_the_same_database
 @pytest.mark.parametrize(
     ("overrides", "rule"),
     [
-        pytest.param({"fields": []}, "at least one field", id="no-fields"),
         pytest.param(
             {"fields": [field_body(name="a"), field_body(name="a")]},
             "Field a: field names must be unique",
             id="duplicate",
         ),
-        pytest.param({"fields": [field_body(name="__proto__")]}, "a field name must be", id="unsafe-key"),
         pytest.param(
             {"fields": [field_body(name="a", allowed_values=["x"])]},
             "Field a: allowed_values is only for",
@@ -127,14 +125,6 @@ def test_a_template_is_still_there_after_the_app_is_rebuilt_on_the_same_database
         ),
         pytest.param(
             {"fields": [field_body(name="a", pattern="(")]}, "Field a: pattern is not a valid", id="bad-pattern"
-        ),
-        pytest.param(
-            {"fields": [field_body(name="a", pattern="x" * 201)]},
-            "Field a: pattern must be 1 to 200",
-            id="long-pattern",
-        ),
-        pytest.param(
-            {"fields": [field_body(name=f"f{i}") for i in range(51)]}, "at most 50 fields", id="too-many-fields"
         ),
         pytest.param({"name": " "}, "name must be 1 to 100", id="blank-name"),
     ],
@@ -174,6 +164,14 @@ def test_the_422_for_a_rule_never_repeats_a_value_of_the_request(client: TestCli
         pytest.param(template_body(unknown=1), id="unknown-key"),
         pytest.param(template_body(fields=[field_body(minimum="low", type="number")]), id="range-not-a-number"),
         pytest.param(template_body(name=5), id="name-not-text"),
+        pytest.param(template_body(fields=[]), id="no-fields"),
+        pytest.param(template_body(fields=[field_body(name=f"f{i}") for i in range(51)]), id="too-many-fields"),
+        pytest.param(template_body(fields=[field_body(name="__proto__")]), id="unsafe-key"),
+        pytest.param(template_body(fields=[field_body(name="Upper")]), id="capital-in-key"),
+        pytest.param(template_body(fields=[field_body(pattern="x" * 201)]), id="long-pattern"),
+        pytest.param(template_body(fields=[field_body(type="choice", allowed_values=[""])]), id="blank-choice-value"),
+        pytest.param(template_body(name=""), id="empty-name"),
+        pytest.param(template_body(name="n" * 101), id="long-name"),
         pytest.param([], id="not-an-object"),
     ],
 )
@@ -195,13 +193,13 @@ def test_a_body_that_is_not_json_is_a_422_and_one_that_is_not_text_is_a_400(clie
     assert not_text.status_code == 400
 
 
-def test_a_json_string_with_a_lone_surrogate_is_a_422_invalid_template_not_a_500(client: TestClient) -> None:
+def test_a_json_string_with_a_lone_surrogate_is_a_422_not_a_500(client: TestClient) -> None:
     body = b'{"name": "\\ud800", "fields": [{"name": "a", "type": "text"}]}'
 
     response = client.post(URL, content=body, headers={"Content-Type": "application/json"})
 
     assert response.status_code == 422
-    assert response.json()["type"] == problem_type("invalid-template")
+    assert response.json()["type"] == problem_type("validation-error")
 
 
 def test_a_regular_expression_the_engine_cannot_compile_is_a_422_not_a_500(client: TestClient) -> None:
@@ -327,7 +325,8 @@ def test_replacing_an_unknown_template_is_a_404(client: TestClient) -> None:
 def test_an_invalid_replacement_changes_nothing_and_keeps_the_version(client: TestClient) -> None:
     created = create(client, name="Stable")
 
-    response = client.put(f"{URL}/{created['id']}", json=template_body(fields=[]))
+    duplicated = [field_body(name="same"), field_body(name="same")]
+    response = client.put(f"{URL}/{created['id']}", json=template_body(fields=duplicated))
 
     assert response.status_code == 422
     assert response.json()["type"] == problem_type("invalid-template")

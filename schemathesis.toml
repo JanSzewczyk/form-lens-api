@@ -9,3 +9,15 @@ max-steps = 50
 [[operations]]
 include-name = "POST /v1/documents/parse"
 checks.positive_data_acceptance.expected-statuses = ["2xx", "3xx", "401", "403", "404", "409", "429", "5xx", "415"]
+
+# A template is valid only if its fields agree with their types (a choice has values, a range fits a number),
+# names are unique and the pattern compiles. A flat JSON Schema cannot say that, so a schema-valid body can
+# be answered with 422 `invalid-template`. This is the rejection the operation declares (`st explain ST202`);
+# the check itself and every phase stay on, and the other statuses of the default list stay as they are.
+[[operations]]
+include-name = "POST /v1/templates"
+checks.positive_data_acceptance.expected-statuses = ["2xx", "3xx", "401", "403", "404", "409", "429", "5xx", "422"]
+
+[[operations]]
+include-name = "PUT /v1/templates/{template_id}"
+checks.positive_data_acceptance.expected-statuses = ["2xx", "3xx", "401", "403", "404", "409", "429", "5xx", "422"]

@@ -20,13 +20,24 @@
       "FieldSpec": {
         "additionalProperties": false,
         "description": "One field of a form, as a client sends it and as it is returned.",
+        "examples": [
+          {
+            "description": "Top right",
+            "name": "invoice_number",
+            "required": true,
+            "type": "text"
+          }
+        ],
         "properties": {
           "allowed_values": {
             "anyOf": [
               {
                 "items": {
+                  "maxLength": 100,
+                  "minLength": 1,
                   "type": "string"
                 },
+                "maxItems": 50,
                 "type": "array"
               },
               {
@@ -34,12 +45,6 @@
               }
             ],
             "description": "The values a `choice` field may take; required for `choice`, refused for other types.",
-            "examples": [
-              [
-                "paid",
-                "unpaid"
-              ]
-            ],
             "title": "Allowed Values"
           },
           "description": {
@@ -48,6 +53,7 @@
             "examples": [
               "Invoice number, top right"
             ],
+            "maxLength": 300,
             "title": "Description",
             "type": "string"
           },
@@ -61,9 +67,6 @@
               }
             ],
             "description": "Largest value of a `number` or `integer` field.",
-            "examples": [
-              10000
-            ],
             "title": "Maximum"
           },
           "minimum": {
@@ -76,9 +79,6 @@
               }
             ],
             "description": "Smallest value of a `number` or `integer` field.",
-            "examples": [
-              0
-            ],
             "title": "Minimum"
           },
           "name": {
@@ -86,12 +86,16 @@
             "examples": [
               "invoice_number"
             ],
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9_]*$",
             "title": "Name",
             "type": "string"
           },
           "pattern": {
             "anyOf": [
               {
+                "maxLength": 200,
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -99,9 +103,6 @@
               }
             ],
             "description": "Regular expression a `text` value must match (at most 200 characters).",
-            "examples": [
-              "^[0-9]{11}$"
-            ],
             "title": "Pattern"
           },
           "required": {
@@ -336,6 +337,7 @@
             "examples": [
               "A supplier invoice with a total and a due date."
             ],
+            "maxLength": 300,
             "title": "Description",
             "type": "string"
           },
@@ -344,6 +346,8 @@
             "items": {
               "$ref": "#/components/schemas/FieldSpec"
             },
+            "maxItems": 50,
+            "minItems": 1,
             "title": "Fields",
             "type": "array"
           },
@@ -352,6 +356,8 @@
             "examples": [
               "Invoice"
             ],
+            "maxLength": 100,
+            "minLength": 1,
             "title": "Name",
             "type": "string"
           }
@@ -421,6 +427,7 @@
             "examples": [
               "A supplier invoice with a total and a due date."
             ],
+            "maxLength": 300,
             "title": "Description",
             "type": "string"
           },
@@ -429,6 +436,8 @@
             "items": {
               "$ref": "#/components/schemas/FieldSpec"
             },
+            "maxItems": 50,
+            "minItems": 1,
             "title": "Fields",
             "type": "array"
           },
@@ -437,6 +446,8 @@
             "examples": [
               "Invoice"
             ],
+            "maxLength": 100,
+            "minLength": 1,
             "title": "Name",
             "type": "string"
           }
@@ -888,7 +899,7 @@
                 }
               }
             },
-            "description": "The body is not valid (`validation-error`), or the template breaks a rule: duplicate or unsafe field names, a choice without values, a range on a non-number, a bad pattern, too many fields (`invalid-template`)."
+            "description": "The body is not valid, for instance too many fields or a name that is too long (`validation-error`), or the template breaks a rule the schema cannot state: duplicate field names, a choice without values, a range on a non-number, a pattern that does not compile (`invalid-template`)."
           }
         },
         "summary": "Create Template",

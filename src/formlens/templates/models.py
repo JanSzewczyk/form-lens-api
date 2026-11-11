@@ -26,7 +26,8 @@ MAX_PATTERN_LENGTH: Final = 200
 
 # A field name is a JSON key of the result: lower case, no leading underscore or digit, so it can never be
 # `__proto__`, `constructor` or a key a client library treats specially.
-_FIELD_NAME: Final = re.compile(r"[a-z][a-z0-9_]*")
+FIELD_NAME_PATTERN: Final = r"^[a-z][a-z0-9_]*$"
+_FIELD_NAME: Final = re.compile(FIELD_NAME_PATTERN)
 
 
 class FieldType(StrEnum):

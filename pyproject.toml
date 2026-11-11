@@ -268,7 +268,7 @@ layers = [
 name = "Extractions are layered: entry points, then the service layer and the adapters, then the domain"
 type = "layers"
 layers = [
-    "(formlens.extractions.entrypoints)",  # optional until step 7 adds it
+    "formlens.extractions.entrypoints",
     "formlens.extractions.service_layer | formlens.extractions.adapters",
     "formlens.extractions.domain",
 ]

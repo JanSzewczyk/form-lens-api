@@ -7,6 +7,7 @@ from fastapi import FastAPI
 
 from formlens.config import Settings
 from formlens.main import create_app
+from tests.extractions.fakes import FakeExtractor
 from tests.fakes import FakeParser
 
 
@@ -19,7 +20,9 @@ def parser() -> FakeParser:
 @pytest.fixture
 def app(settings: Settings, parser: FakeParser) -> Iterator[FastAPI]:
     """The app of the parsing tests; it replaces the shared fixture so a test sees its parser."""
-    application = create_app(settings, parser_factory=lambda _: parser)
+    application = create_app(
+        settings, parser_factory=lambda _: parser, extractor_factory=lambda _: FakeExtractor(), start_worker=False
+    )
     yield application
     application.dependency_overrides.clear()
     application.state.database.dispose()

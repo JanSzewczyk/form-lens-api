@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from formlens.config import ModelSettings, Settings
 from formlens.main import create_app
 from formlens.migrations import upgrade_to_head
+from tests.extractions.fakes import FakeExtractor
 from tests.fakes import FakeParser
 from tests.probes import add_probe_routes
 
@@ -63,21 +64,29 @@ def migrated_database(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.fixture
-def settings(tmp_path: Path, migrated_database: Path) -> Settings:
-    """Default test settings, with a private copy of the migrated database as `DB_URL`.
+def db_url(tmp_path: Path, migrated_database: Path) -> str:
+    """`DB_URL` of a private copy of the migrated database.
 
     A real file, not an in-memory database: the tests of the race guards need connections that really compete.
     A test never touches `./formlens.db`.
     """
     database = tmp_path / "formlens.db"
     shutil.copyfile(migrated_database, database)
-    return make_settings(db_url=f"sqlite:///{database}")
+    return f"sqlite:///{database}"
+
+
+@pytest.fixture
+def settings(db_url: str) -> Settings:
+    """Default test settings, with a private migrated database."""
+    return make_settings(db_url=db_url)
 
 
 @pytest.fixture
 def app(settings: Settings) -> Iterator[FastAPI]:
     """Application built from the test settings; dependency overrides are cleared afterwards."""
-    application = create_app(settings, parser_factory=lambda _: FakeParser())
+    application = create_app(
+        settings, parser_factory=lambda _: FakeParser(), extractor_factory=lambda _: FakeExtractor(), start_worker=False
+    )
     yield application
     application.dependency_overrides.clear()
     application.state.database.dispose()

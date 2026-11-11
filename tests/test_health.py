@@ -134,6 +134,8 @@ def test_the_committed_document_has_the_two_probe_operations_and_those_of_the_fe
         ("/health", "get"),
         ("/health/ready", "get"),
         ("/v1/documents/parse", "post"),
+        ("/v1/extractions", "post"),
+        ("/v1/extractions/{extraction_id}", "get"),
         ("/v1/templates", "get"),
         ("/v1/templates", "post"),
         ("/v1/templates/{template_id}", "delete"),

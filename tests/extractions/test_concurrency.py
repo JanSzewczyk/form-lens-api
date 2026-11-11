@@ -11,11 +11,14 @@ from datetime import timedelta
 from uuid import UUID
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from formlens.database import Database
 from formlens.extractions.adapters.sqlite_repository import SqliteExtractionRepository
 from formlens.extractions.domain.exceptions import QueueFull
 from formlens.extractions.domain.model import Extraction, ExtractionStatus, FailureReason
+from tests.documents import sample
 from tests.extractions.factories import NOW, ExtractionFactory
 
 CONTENT = b"%PDF-1.7 upload"
@@ -102,3 +105,38 @@ def test_only_as_many_parallel_submissions_as_the_queue_has_room_for_are_accepte
     assert len(stored) == room
     assert all(repository.read_input(job_id) == CONTENT for job_id in stored)  # an accepted job has its upload
     assert all(repository.read_input(job_id) is None for job_id in jobs if job_id not in stored)
+
+
+@pytest.mark.concurrency
+def test_submissions_racing_the_deletion_of_their_template_are_accepted_or_refused_never_a_500(
+    app: FastAPI, client: TestClient
+) -> None:
+    """D9: a job holds its own copy of the template, so a delete is not a conflict and there is no guard to remove."""
+    template = client.post(
+        "/v1/templates", json={"name": "T", "fields": [{"name": "number", "type": "text", "required": True}]}
+    ).json()
+    app.openapi()  # the first request builds the OpenAPI document; do not let the threads do it together
+    posters = 6
+    barrier = threading.Barrier(posters + 1, timeout=5)
+
+    def post(_: int) -> int:
+        own = TestClient(app)
+        barrier.wait()
+        return own.post(
+            "/v1/extractions",
+            data={"template_id": template["id"]},
+            files={"file": ("a.pdf", sample("text_layer.pdf"), "application/pdf")},
+        ).status_code
+
+    def delete() -> int:
+        own = TestClient(app)
+        barrier.wait()
+        return own.delete(f"/v1/templates/{template['id']}").status_code
+
+    with ThreadPoolExecutor(posters + 1) as pool:
+        removal = pool.submit(delete)
+        statuses = list(pool.map(post, range(posters)))
+
+    assert removal.result() == 204
+    assert set(statuses) <= {202, 404}
+    assert app.state.extraction_repository.count_pending() == statuses.count(202)

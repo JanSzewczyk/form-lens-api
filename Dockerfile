@@ -34,10 +34,12 @@ ENV PATH="/app/.venv/bin:$PATH" \
     HOST=0.0.0.0 \
     PORT=8000 \
     VLM_BACKEND=transformers \
-    MODELS_PATH=/models
+    MODELS_PATH=/models \
+    DB_URL=sqlite:////data/formlens.db
 
 RUN groupadd --system --gid 10001 app \
-    && useradd --system --uid 10001 --gid app --no-create-home app
+    && useradd --system --uid 10001 --gid app --no-create-home app \
+    && mkdir /data && chown 10001:10001 /data
 WORKDIR /app
 # Owned by root: the process can read and run its code but not change it.
 COPY --from=builder /app/.venv /app/.venv
@@ -47,8 +49,15 @@ USER 10001:10001
 # The model is not in the image: mount the folder `make download-models VLM_BACKEND=transformers`
 # filled, read-only, at /models. Without it the service stops at start-up with `model_load_failed`.
 # `mlx` runs only on Apple Silicon, so the image uses `transformers`.
+# The database lives in /data, the one folder the process may write (SQLite's WAL needs the folder, not only the
+# file). Mount a volume there, or the data is lost with the container. A named volume copies this owner on first
+# use; a bind mount must be writable by user 10001.
+VOLUME /data
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --start-interval=2s --retries=3 \
     CMD ["python", "-c", "import os, urllib.request; urllib.request.urlopen(f'http://127.0.0.1:{os.environ[\"PORT\"]}/health', timeout=3)"]
 
-CMD ["python", "-m", "formlens"]
+# Migrate, then serve: the service refuses to start on a database that is not at the newest revision. The
+# language model is not in the image either: LLM_BASE_URL must reach an Ollama (for the host's:
+# http://host.docker.internal:11434/v1, see compose.yaml).
+CMD ["sh", "-c", "python -m formlens migrate && exec python -m formlens"]

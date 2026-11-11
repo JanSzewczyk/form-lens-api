@@ -34,8 +34,8 @@ def wait_until(condition: Callable[[], bool], *, timeout: float = 5.0) -> bool:
 
 
 @pytest.fixture
-def settings() -> Settings:
-    return make_settings(max_concurrency=SLOTS)
+def settings(db_url: str) -> Settings:
+    return make_settings(max_concurrency=SLOTS, db_url=db_url)
 
 
 def post_png(client: TestClient) -> int:

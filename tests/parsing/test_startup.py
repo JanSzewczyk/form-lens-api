@@ -3,8 +3,10 @@
 import asyncio
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from formlens.config import Settings
@@ -13,14 +15,20 @@ from formlens.parsing.exceptions import ModelUnavailable
 from formlens.parsing.ports import DocumentParser
 from tests.conftest import make_settings
 from tests.documents import sample
+from tests.extractions.fakes import FakeExtractor
 from tests.fakes import FakeParser
 
 
-def test_the_factory_runs_once_at_startup_in_a_worker_thread_and_receives_the_settings() -> None:
+def build(settings: Settings, **kwargs: Any) -> FastAPI:
+    """The app with a fake extractor and no worker: these tests are about the parser."""
+    return create_app(settings, extractor_factory=lambda _: FakeExtractor(), start_worker=False, **kwargs)
+
+
+def test_the_factory_runs_once_at_startup_in_a_worker_thread_and_receives_the_settings(db_url: str) -> None:
     received: list[Settings] = []
     on_the_event_loop: list[bool] = []
     parser = FakeParser()
-    settings = make_settings(vlm_backend="transformers")
+    settings = make_settings(vlm_backend="transformers", db_url=db_url)
 
     def factory(given: Settings) -> DocumentParser:
         received.append(given)
@@ -32,7 +40,7 @@ def test_the_factory_runs_once_at_startup_in_a_worker_thread_and_receives_the_se
             on_the_event_loop.append(True)
         return parser
 
-    app = create_app(settings, parser_factory=factory)
+    app = build(settings, parser_factory=factory)
     before_start = app.state.parser
 
     with TestClient(app) as client:
@@ -49,12 +57,14 @@ def test_the_factory_runs_once_at_startup_in_a_worker_thread_and_receives_the_se
 
 
 def test_a_factory_that_fails_stops_the_startup_and_logs_once_with_a_hint(
-    capsys: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str], db_url: str
 ) -> None:
     def factory(_: Settings) -> DocumentParser:
         raise ModelUnavailable
 
-    app = create_app(make_settings(vlm_backend="transformers", models_path="/data/models"), parser_factory=factory)
+    app = build(
+        make_settings(vlm_backend="transformers", models_path="/data/models", db_url=db_url), parser_factory=factory
+    )
 
     with pytest.raises(ModelUnavailable), TestClient(app):
         pass
@@ -69,9 +79,9 @@ def test_a_factory_that_fails_stops_the_startup_and_logs_once_with_a_hint(
 
 
 def test_the_default_factory_refuses_an_empty_models_folder_before_it_imports_docling(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], db_url: str
 ) -> None:
-    app = create_app(make_settings(models_path=tmp_path, vlm_backend="transformers"))
+    app = build(make_settings(models_path=tmp_path, vlm_backend="transformers", db_url=db_url))
 
     with pytest.raises(ModelUnavailable, match=r"missing config\.json"), TestClient(app):
         pass
@@ -82,12 +92,14 @@ def test_the_default_factory_refuses_an_empty_models_folder_before_it_imports_do
     assert "ibm-granite/granite-docling-258M" in failed["reason"]
 
 
-def test_a_failure_that_is_not_a_missing_model_logs_no_download_hint(capsys: pytest.CaptureFixture[str]) -> None:
+def test_a_failure_that_is_not_a_missing_model_logs_no_download_hint(
+    capsys: pytest.CaptureFixture[str], db_url: str
+) -> None:
     def factory(_: Settings) -> DocumentParser:
         msg = "out of memory"
         raise RuntimeError(msg)
 
-    app = create_app(make_settings(), parser_factory=factory)
+    app = build(make_settings(db_url=db_url), parser_factory=factory)
 
     with pytest.raises(RuntimeError, match="out of memory"), TestClient(app):
         pass

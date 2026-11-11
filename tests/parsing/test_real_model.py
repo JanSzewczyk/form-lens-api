@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from formlens.main import create_app
+from formlens.migrations import upgrade_to_head
 from formlens.modelspec import MODEL_SPECS
 from tests.conftest import slow_settings
 from tests.documents import sample
@@ -19,10 +20,13 @@ pytestmark = [pytest.mark.slow, pytest.mark.timeout(600)]
 
 
 @pytest.fixture(scope="module")
-def real_client() -> Iterator[TestClient]:
+def real_client(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TestClient]:
     """One app with the real model loaded at startup: loading takes seconds and no test changes it."""
     offline = os.environ.get("HF_HUB_OFFLINE")  # the adapter sets it in this process; put it back afterwards
-    with TestClient(create_app(slow_settings())) as client:
+    url = f"sqlite:///{tmp_path_factory.mktemp('real') / 'formlens.db'}"
+    upgrade_to_head(url)  # the start checks that the database is at the newest revision
+    settings = slow_settings().model_copy(update={"db_url": url})
+    with TestClient(create_app(settings, start_worker=False)) as client:
         yield client
     if offline is None:
         os.environ.pop("HF_HUB_OFFLINE", None)

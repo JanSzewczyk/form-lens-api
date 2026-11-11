@@ -205,6 +205,8 @@ ignore_imports = [
     "formlens.migrations.versions.** -> sqlalchemy",
     "formlens.templates.repository -> sqlalchemy",
     "formlens.templates.tables -> sqlalchemy",
+    "formlens.extractions.adapters.tables -> sqlalchemy",
+    "formlens.extractions.adapters.sqlite_repository -> sqlalchemy",
 ]
 
 [[tool.importlinter.contracts]]

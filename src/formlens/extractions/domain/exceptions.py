@@ -5,7 +5,11 @@ raised by a port while a job runs and decides how the job ends; it never reaches
 carries a fixed `error` instead. No message holds document text, a field value or a library's own message.
 """
 
+from typing import Final
 from uuid import UUID
+
+# What a client is told to wait when the queue is full: about the time one job takes to leave it.
+QUEUE_RETRY_AFTER_SECONDS: Final = 30
 
 
 class ExtractionNotFound(Exception):

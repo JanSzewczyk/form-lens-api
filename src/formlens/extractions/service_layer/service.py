@@ -13,9 +13,6 @@ from formlens.extractions.domain.ports import ExtractionRepository, TemplateCata
 
 log = structlog.get_logger(__name__)
 
-# What a client is told to wait when the queue is full: about the time one job takes to leave it.
-RETRY_AFTER_SECONDS = 30
-
 
 def utc_now() -> datetime:
     """Return the current time, aware, in UTC."""

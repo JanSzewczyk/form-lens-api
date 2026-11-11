@@ -102,29 +102,55 @@ def test_a_near_miss_of_a_probe_path_is_a_404_problem_and_never_a_redirect_or_a_
     assert response.json()["request_id"] == response.headers["X-Request-ID"]
 
 
-@example(path="v1/documents/parse")  # a real path, reached with the wrong method: 405
-@given(path=st.text(alphabet=st.characters(codec="utf-8"), min_size=1, max_size=40))
-def test_no_path_makes_the_service_answer_with_anything_but_a_documented_status(path: str) -> None:
-    app = create_app(make_settings())
+def test_no_path_makes_the_service_answer_with_anything_but_a_documented_status(db_url: str) -> None:
+    """The app is built once, on a migrated database, and every example reads from it.
+
+    The routes of the service are real paths a generator reaches by chance, so each is an explicit example: they must
+    answer 200, 404 or 405, never a 500, and the result must not depend on what the generator happens to find.
+    """
+    app = create_app(make_settings(db_url=db_url), parser_factory=lambda _: FakeParser())
     app.state.parser = FakeParser()  # a loaded model: `health/ready` is a real path and must answer 200, not 503
     client = TestClient(app, raise_server_exceptions=False)
+    template_id = "0192f5e0-5a3b-7c11-9d2e-3f6a1b2c4d5e"
 
-    response = client.get("/" + quote(path.lstrip("/"), safe="/"), follow_redirects=False)
+    @example(path="v1/documents/parse")  # a real path, reached with the wrong method: 405
+    @example(path="health/ready")
+    @example(path="health")
+    @example(path="v1/templates")
+    @example(path=f"v1/templates/{template_id}")
+    @example(path="v1/extractions")
+    @example(path=f"v1/extractions/{template_id}")
+    @given(path=st.text(alphabet=st.characters(codec="utf-8"), min_size=1, max_size=40))
+    def check(path: str) -> None:
+        response = client.get("/" + quote(path.lstrip("/"), safe="/"), follow_redirects=False)
 
-    assert response.status_code in {200, 404, 405}
-    assert response.status_code == 200 or response.headers["content-type"] == PROBLEM
+        assert response.status_code in {200, 404, 405}
+        assert response.status_code == 200 or response.headers["content-type"] == PROBLEM
+
+    try:
+        check()
+    finally:
+        app.state.database.dispose()
 
 
-@given(request_id=st.text(alphabet=st.characters(min_codepoint=0x20, max_codepoint=0x7E), max_size=100))
-def test_a_request_id_is_echoed_if_and_only_if_it_is_safe(request_id: str) -> None:
-    client = TestClient(create_app(make_settings()))
-    safe = re.fullmatch(r"[A-Za-z0-9._-]{1,64}", request_id) is not None
+def test_a_request_id_is_echoed_if_and_only_if_it_is_safe(db_url: str) -> None:
+    app = create_app(make_settings(db_url=db_url))  # once for all examples; the engine is released at the end
+    client = TestClient(app)
 
-    response = client.get("/health", headers={"X-Request-ID": request_id})
+    @given(request_id=st.text(alphabet=st.characters(min_codepoint=0x20, max_codepoint=0x7E), max_size=100))
+    def check(request_id: str) -> None:
+        safe = re.fullmatch(r"[A-Za-z0-9._-]{1,64}", request_id) is not None
 
-    echoed = response.headers["X-Request-ID"] == request_id
-    assert echoed == safe
-    assert re.fullmatch(r"[A-Za-z0-9._-]{1,64}", response.headers["X-Request-ID"])
+        response = client.get("/health", headers={"X-Request-ID": request_id})
+
+        echoed = response.headers["X-Request-ID"] == request_id
+        assert echoed == safe
+        assert re.fullmatch(r"[A-Za-z0-9._-]{1,64}", response.headers["X-Request-ID"])
+
+    try:
+        check()
+    finally:
+        app.state.database.dispose()
 
 
 def test_the_committed_document_has_the_two_probe_operations_and_those_of_the_features() -> None:

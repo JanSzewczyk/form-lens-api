@@ -17,10 +17,15 @@ from tests.extractions.fakes import FakeExtractor
 from tests.fakes import FakeParser
 from tests.probes import add_probe_routes
 
+#: The database of settings that were given none: a folder that does not exist, so a test that reaches the
+#: database fails with "unable to open database file" instead of quietly creating `./formlens.db` in the
+#: repository. A test that needs a database passes the `db_url` fixture.
+UNUSABLE_DB_URL = "sqlite:////nonexistent-folder-for-tests/formlens.db"
+
 
 def make_settings(**overrides: Any) -> Settings:
     """Build Settings for a test: no `.env` file, environment `test`, overrides on top."""
-    values: dict[str, Any] = {"environment": "test", **overrides}
+    values: dict[str, Any] = {"environment": "test", "db_url": UNUSABLE_DB_URL, **overrides}
     return Settings(_env_file=None, **values)
 
 
@@ -38,6 +43,19 @@ def slow_settings() -> Settings:
         llm_base_url=llm.llm_base_url,
         llm_model=llm.llm_model,
     )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _no_test_touches_the_default_database() -> Iterator[None]:
+    """Fail the run when a test created or changed `./formlens.db`, the default `DB_URL`, in the working directory.
+
+    A developer's own database from `make migrate` may be there; it must be the same when the suite ends.
+    """
+    path = Path("formlens.db")
+    before = path.stat().st_mtime_ns if path.exists() else None
+    yield
+    after = path.stat().st_mtime_ns if path.exists() else None
+    assert after == before, "a test created or changed ./formlens.db: it built an app without a db_url"
 
 
 @pytest.fixture(autouse=True)

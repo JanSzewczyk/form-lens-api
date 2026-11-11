@@ -59,6 +59,7 @@ class TemplateField:
     def __post_init__(self) -> None:
         """Refuse a field that breaks a rule of its type."""
         self._check_name()
+        self._check_text()
         if len(self.description) > MAX_DESCRIPTION_LENGTH:
             self._refuse(f"description is longer than {MAX_DESCRIPTION_LENGTH} characters")
         self._check_choice()
@@ -77,6 +78,11 @@ class TemplateField:
                 "starting with a letter"
             )
             raise InvalidTemplate(msg)
+
+    def _check_text(self) -> None:
+        texts = (self.description, self.pattern or "", *(self.allowed_values or ()))
+        if not all(_is_storable(text) for text in texts):
+            self._refuse("text must be valid Unicode (a lone surrogate cannot be stored)")
 
     def _check_choice(self) -> None:
         if self.type is not FieldType.CHOICE:
@@ -111,12 +117,24 @@ class TemplateField:
             self._refuse(f"pattern must be 1 to {MAX_PATTERN_LENGTH} characters")
         try:
             re.compile(self.pattern)
-        except re.error:
+        except re.error, OverflowError, RecursionError:
+            # `a{4294967295}` raises OverflowError and a deeply nested group RecursionError, not re.error.
             self._refuse("pattern is not a valid regular expression")
+
+
+def _is_storable(text: str) -> bool:
+    """Tell whether `text` can be written as UTF-8; a lone surrogate such as U+D800 cannot."""
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 def _check_definition(name: str, description: str, fields: tuple[TemplateField, ...]) -> None:
     """The rules of the template as a whole."""
+    if not _is_storable(name) or not _is_storable(description):
+        raise InvalidTemplate("text must be valid Unicode (a lone surrogate cannot be stored)")
     if not name.strip() or len(name) > MAX_TEMPLATE_NAME_LENGTH:
         raise InvalidTemplate(f"name must be 1 to {MAX_TEMPLATE_NAME_LENGTH} characters")
     if len(description) > MAX_DESCRIPTION_LENGTH:

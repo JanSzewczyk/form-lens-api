@@ -12,7 +12,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from formlens.problems import problem, unhandled_problem
+from formlens.problems import LOAD_SHED_KEY, problem, unhandled_problem
 
 REQUEST_ID_HEADER: Final = "X-Request-ID"
 _VALID_REQUEST_ID: Final = re.compile(r"[A-Za-z0-9._-]{1,64}")
@@ -81,11 +81,14 @@ class RequestContextMiddleware:
                 # traceback of an exception that escapes; this line only flags the request.
                 fields["aborted_by"] = escaped
                 log.error("request_completed", **fields)
-            elif status >= 500:
+            elif status >= 500 and not state.get(LOAD_SHED_KEY, False):
                 # The traceback of an unhandled error is logged here, on the one line per request.
                 if _UNHANDLED_KEY in state:
                     fields["exc_info"] = state[_UNHANDLED_KEY]
                 log.error("request_completed", **fields)
+            elif status >= 500:
+                # Load shedding: a domain error with `retry_after_seconds` was answered with 503.
+                log.warning("request_completed", **fields)
             else:
                 log.info("request_completed", **fields)
 
@@ -94,10 +97,11 @@ class UnhandledErrorMiddleware:
     """Answer an exception no handler claimed with the generic 500 problem.
 
     Starlette's own catch-all runs outside every user middleware, so its response would carry
-    neither `X-Request-ID` nor CORS headers. This middleware is the innermost one, so the response
-    it sends passes through both. It records the exception in the request state and leaves the
-    logging to `RequestContextMiddleware`, so the traceback is logged once and the server does not
-    log it again. A response that has already started cannot be replaced: that exception escapes.
+    neither `X-Request-ID` nor CORS headers. This middleware sits inside the request-context and CORS
+    middleware, so the response it sends passes through both; only the body cap is inside it, closest
+    to the routes. It records the exception in the request state and leaves the logging to
+    `RequestContextMiddleware`, so the traceback is logged once and the server does not log it again.
+    A response that has already started cannot be replaced: that exception escapes.
     """
 
     def __init__(self, app: ASGIApp) -> None:

@@ -12,6 +12,16 @@ services:
       HOST: 0.0.0.0
       PORT: "8000"
       ENVIRONMENT: production
+      # `mlx` runs only on Apple Silicon; the container uses `transformers`, so download that model:
+      # `make download-models VLM_BACKEND=transformers`.
+      VLM_BACKEND: transformers
+      MODELS_PATH: /models
+    volumes:
+      # The host folder `make download-models` filled (MODELS_PATH, `models/` by default), read-only.
+      - type: bind
+        source: ${MODELS_PATH:-./models}
+        target: /models
+        read_only: true
     read_only: true
     tmpfs:
       - /tmp

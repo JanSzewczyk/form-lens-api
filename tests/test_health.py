@@ -6,7 +6,7 @@ from urllib.parse import quote
 
 import pytest
 from fastapi.testclient import TestClient
-from hypothesis import given
+from hypothesis import example, given
 from hypothesis import strategies as st
 
 from formlens.main import create_app
@@ -101,13 +101,14 @@ def test_a_near_miss_of_a_probe_path_is_a_404_problem_and_never_a_redirect_or_a_
     assert response.json()["request_id"] == response.headers["X-Request-ID"]
 
 
+@example(path="v1/documents/parse")  # a real path, reached with the wrong method: 405
 @given(path=st.text(alphabet=st.characters(codec="utf-8"), min_size=1, max_size=40))
 def test_no_path_makes_the_service_answer_with_anything_but_a_documented_status(path: str) -> None:
     client = TestClient(create_app(make_settings()), raise_server_exceptions=False)
 
     response = client.get("/" + quote(path.lstrip("/"), safe="/"), follow_redirects=False)
 
-    assert response.status_code in {200, 404}
+    assert response.status_code in {200, 404, 405}
     assert response.status_code == 200 or response.headers["content-type"] == PROBLEM
 
 
@@ -123,12 +124,13 @@ def test_a_request_id_is_echoed_if_and_only_if_it_is_safe(request_id: str) -> No
     assert re.fullmatch(r"[A-Za-z0-9._-]{1,64}", response.headers["X-Request-ID"])
 
 
-def test_the_committed_document_has_exactly_the_two_probe_operations() -> None:
+def test_the_committed_document_has_the_two_probe_operations_and_the_parsing_one() -> None:
     spec: dict[str, Any] = json.loads((Path(__file__).resolve().parent.parent / "openapi.json").read_text())
 
     assert {(path, method) for path, item in spec["paths"].items() for method in item} == {
         ("/health", "get"),
         ("/health/ready", "get"),
+        ("/v1/documents/parse", "post"),
     }
     assert sorted(spec["paths"]["/health/ready"]["get"]["responses"]) == ["200", "503"]
     assert sorted(spec["paths"]["/health"]["get"]["responses"]) == ["200"]

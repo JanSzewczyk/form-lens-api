@@ -11,8 +11,10 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
   Commit it with any change that alters the API.
 - `make api-check` runs Spectral, oasdiff and Schemathesis (needs Node, Docker or oasdiff).
 - `make download-models` downloads the pinned model for `VLM_BACKEND` into `MODELS_PATH` (network,
-  uv, about 0.6 GB). The script reads the process environment and `make` variables, never `.env`:
-  `make download-models VLM_BACKEND=transformers MODELS_PATH=/data/models`.
+  uv, about 0.6 GB). The script asks `scripts/resolve_model.py`, which reads the two settings
+  through `ModelSettings` like the service does: environment and `make` variables, then `.env` in
+  the working directory, then the defaults. It runs `uv run --no-sync`, so `make install` comes
+  first: `make download-models VLM_BACKEND=transformers MODELS_PATH=/data/models`.
 - `make test-models` runs the tests marked `slow` and fails, not skips, when the pinned model files
   are missing. The default `addopts` is `-m "not slow"`, so `make check` and `uv run pytest`
   deselect them.
@@ -23,8 +25,13 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
 
 ## Layout
 
-- Service core: `config.py`, `logging_config.py`, `middleware.py`, `problems.py`, `openapi.py`,
+- Service core: `config.py`, `modelspec.py` (the pinned model repositories, revisions and files),
+  `logging_config.py`, `middleware.py`, `problems.py`, `openapi.py`,
   `types.py`, `pagination.py`, `query.py`, `health/`.
+- `parsing/`: the first domain module (`POST /v1/documents/parse`). `docling_parser.py` is the only
+  module that imports Docling, inside `build_docling_parser`, and only `main.py` imports it; the rest
+  works against the `DocumentParser` port, with `tests/fakes.py: FakeParser`. Import contracts enforce
+  both. `tests/schemathesis_app.py` is the app `make schemathesis` fuzzes (fake parser).
 - Add structure to a module only when it hurts (see `docs/explanation/architecture.md`).
   New modules start like `docs/how-to/add-a-module.md` says.
 
@@ -45,7 +52,7 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
   There is no factories module yet: set every value the test asserts on inline.
 - The autouse fixture `_isolate_from_exported_settings` (`tests/conftest.py`) deletes every setting
   from the environment for each test, so an exported `DOCS_ENABLED` cannot leak in. Tests marked
-  `slow` are exempt: they read `MODELS_PATH` and `VLM_BACKEND` from the environment.
+  `slow` are exempt: they read `MODELS_PATH` and `VLM_BACKEND` from the environment and `.env`.
 - Tests of the core use `/health` and the probe routes of `tests/probes.py` (fixture
   `probe_app`).
 - Logging: structlog, constant event names, snake_case fields, no f-strings, no `print`. Log a
@@ -57,11 +64,14 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
 
 ## Gotchas
 
-- The uv version is pinned twice: the `uv` image in `Dockerfile` and `UV_VERSION` in
-  `.github/workflows/ci.yml` (`tests/test_tooling.py` checks they match). Dependabot does not
+- The uv version is pinned three times: the `uv` image in `Dockerfile` and `UV_VERSION` in
+  `.github/workflows/ci.yml` and `release.yml` (`tests/test_tooling.py` checks they match). Dependabot does not
   bump the Spectral, oasdiff and pip-audit pins in `Makefile`.
 - `README.md` must name every make target (`tests/test_docs.py`).
 - The model downloader is pinned in `scripts/download_models.sh` (`uvx --from huggingface_hub==2.4.0 hf`).
   Dependabot does not bump it, and it runs outside `uv.lock`, so `make audit` does not see it or its
   dependencies (see `docs/licenses.md`). Bump it by hand.
+- `torch` and `torchvision` are direct dependencies with a CPU index on Linux (`[tool.uv.sources]`);
+  pip-audit skips the `+cpu` local version, so `make audit` strips it. A `torch` bump needs the version
+  on both PyPI and the PyTorch CPU index.
 - `uv run --python 3.15t` replaces `.venv` with the free-threaded build; `uv sync` restores it.

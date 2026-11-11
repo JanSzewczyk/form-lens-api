@@ -1,6 +1,7 @@
 """`scripts/download_models.sh` with a fake downloader: no network, no real model."""
 
 import os
+import shutil
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -10,8 +11,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from formlens.config import Settings
-from tests.model_pins import MODEL_PINS
+from formlens.config import ModelSettings, Settings
+from formlens.modelspec import MODEL_SPECS, VlmBackend
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "download_models.sh"
 
@@ -76,7 +77,10 @@ def run_script(tmp_path: Path, fake_downloader: Path) -> RunScript:
         fail: bool = False,
         models_path: str | Use = Use.DEFAULT,
         hf_cli: str | None = None,
+        dotenv: str | None = None,
     ) -> Run:
+        if dotenv is not None:
+            (cwd / ".env").write_text(dotenv, encoding="utf-8")
         env = {
             "PATH": os.environ["PATH"],
             "HF_CLI": str(fake_downloader) if hf_cli is None else hf_cli,
@@ -100,8 +104,10 @@ def run_script(tmp_path: Path, fake_downloader: Path) -> RunScript:
 
 
 @pytest.mark.parametrize("backend", ["mlx", "transformers"])
-def test_the_pinned_revision_of_the_backend_is_downloaded_into_its_folder(run_script: RunScript, backend: str) -> None:
-    pin = MODEL_PINS[backend]
+def test_the_pinned_revision_of_the_backend_is_downloaded_into_its_folder(
+    run_script: RunScript, backend: VlmBackend
+) -> None:
+    pin = MODEL_SPECS[backend]
 
     result = run_script(backend=backend)
 
@@ -113,7 +119,7 @@ def test_the_pinned_revision_of_the_backend_is_downloaded_into_its_folder(run_sc
 
 
 def test_the_mlx_model_is_the_default_backend(run_script: RunScript) -> None:
-    pin = MODEL_PINS["mlx"]
+    pin = MODEL_SPECS["mlx"]
 
     result = run_script()
 
@@ -140,7 +146,7 @@ def test_a_model_already_at_the_pinned_revision_is_not_downloaded_again(run_scri
 
 
 def test_a_model_at_another_revision_is_downloaded_again(run_script: RunScript) -> None:
-    pin = MODEL_PINS["mlx"]
+    pin = MODEL_SPECS["mlx"]
     first = run_script()
     (first.models / pin.folder / ".revision").write_text("0" * 40 + "\n", encoding="utf-8")
 
@@ -151,7 +157,7 @@ def test_a_model_at_another_revision_is_downloaded_again(run_script: RunScript) 
 
 
 def test_a_failed_download_leaves_no_revision_marker(run_script: RunScript) -> None:
-    pin = MODEL_PINS["mlx"]
+    pin = MODEL_SPECS["mlx"]
 
     result = run_script(fail=True)
 
@@ -235,7 +241,7 @@ def test_a_downloader_command_of_only_blanks_is_a_clear_error_and_creates_nothin
 
 
 def test_the_downloader_override_may_carry_arguments(run_script: RunScript, fake_downloader: Path) -> None:
-    pin = MODEL_PINS["mlx"]
+    pin = MODEL_SPECS["mlx"]
 
     result = run_script(hf_cli=f"{fake_downloader} --profile offline")
 
@@ -246,7 +252,7 @@ def test_the_downloader_override_may_carry_arguments(run_script: RunScript, fake
 
 
 def test_a_marker_without_the_model_files_is_not_taken_for_a_finished_download(run_script: RunScript) -> None:
-    pin = MODEL_PINS["mlx"]
+    pin = MODEL_SPECS["mlx"]
     first = run_script()
     (first.models / pin.folder / "config.json").unlink()
 
@@ -257,7 +263,7 @@ def test_a_marker_without_the_model_files_is_not_taken_for_a_finished_download(r
 
 
 def test_each_backend_keeps_its_own_folder_and_marker(run_script: RunScript) -> None:
-    mlx, transformers = MODEL_PINS["mlx"], MODEL_PINS["transformers"]
+    mlx, transformers = MODEL_SPECS["mlx"], MODEL_SPECS["transformers"]
     run_script(backend="mlx")
 
     second = run_script(backend="transformers")
@@ -273,7 +279,7 @@ def test_each_backend_keeps_its_own_folder_and_marker(run_script: RunScript) -> 
 
 def test_a_failed_download_over_an_older_revision_removes_the_old_marker(run_script: RunScript) -> None:
     """The marker says "this folder holds the pinned revision"; a download that died half way voids it."""
-    pin = MODEL_PINS["mlx"]
+    pin = MODEL_SPECS["mlx"]
     first = run_script()
     marker = first.models / pin.folder / ".revision"
     marker.write_text("0" * 40 + "\n", encoding="utf-8")
@@ -295,7 +301,7 @@ def test_an_empty_models_path_is_refused_and_nothing_is_written(run_script: RunS
 
 
 def test_a_models_path_that_starts_with_a_dash_is_a_folder_and_not_an_option(run_script: RunScript) -> None:
-    pin = MODEL_PINS["mlx"]
+    pin = MODEL_SPECS["mlx"]
 
     result = run_script(models_path="-x")
 
@@ -312,7 +318,7 @@ def settings_folders(value: str | None, monkeypatch: pytest.MonkeyPatch, cwd: Pa
         settings = Settings(_env_file=None)
     except ValidationError:
         return []
-    return [cwd / settings.models_path / MODEL_PINS["mlx"].folder]
+    return [cwd / settings.models_path / MODEL_SPECS["mlx"].folder]
 
 
 @pytest.mark.parametrize(
@@ -362,3 +368,127 @@ def test_the_script_and_the_settings_accept_the_same_backend_names(
     script_accepts = run_script(backend=backend).process.returncode == 0
 
     assert script_accepts == settings_accept
+
+
+# --- one source of defaults: `.env`, the environment and the service agree -------------------------
+
+
+def test_a_dot_env_moves_the_download_and_the_settings_to_the_same_backend_and_folder(
+    run_script: RunScript, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec = MODEL_SPECS["transformers"]
+
+    run = run_script(dotenv="VLM_BACKEND=transformers\nMODELS_PATH=weights\n", models_path=Use.UNSET)
+
+    assert run.process.returncode == 0, run.process.stderr
+    assert run.calls == [f"download {spec.repo} --revision {spec.revision} --local-dir weights/{spec.folder}"]
+    monkeypatch.chdir(run.cwd)
+    settings = Settings()
+    service_folder = run.cwd / settings.models_path / MODEL_SPECS[settings.vlm_backend].folder
+    assert settings.vlm_backend == "transformers"
+    assert (service_folder / ".revision").read_text(encoding="utf-8").strip() == spec.revision
+    assert (service_folder / "config.json").is_file()
+
+
+def test_the_environment_beats_a_dot_env_for_the_script_and_the_settings_alike(
+    run_script: RunScript, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec = MODEL_SPECS["mlx"]
+    dotenv = "VLM_BACKEND=transformers\nMODELS_PATH=from-file\n"
+
+    run = run_script(dotenv=dotenv, backend="mlx", models_path="from-environment")
+
+    assert run.process.returncode == 0, run.process.stderr
+    assert run.calls == [f"download {spec.repo} --revision {spec.revision} --local-dir from-environment/{spec.folder}"]
+    monkeypatch.chdir(run.cwd)
+    monkeypatch.setenv("VLM_BACKEND", "mlx")
+    monkeypatch.setenv("MODELS_PATH", "from-environment")
+    settings = Settings()
+    assert (settings.vlm_backend, settings.models_path) == ("mlx", Path("from-environment"))
+    assert not (run.cwd / "from-file").exists()
+
+
+def test_an_unrelated_bad_value_in_the_dot_env_does_not_block_the_download(
+    run_script: RunScript, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`PORT=abc` stops the service, not the download: the script reads the two model settings only."""
+    spec = MODEL_SPECS["mlx"]
+
+    run = run_script(dotenv="PORT=abc\n", models_path="weights")
+
+    assert run.process.returncode == 0, run.process.stderr
+    assert run.calls == [f"download {spec.repo} --revision {spec.revision} --local-dir weights/{spec.folder}"]
+    monkeypatch.chdir(run.cwd)
+    with pytest.raises(ValidationError, match="port"):
+        Settings()
+    assert ModelSettings().models_path == Path("models")  # the narrow class sees only its two keys
+
+
+def test_an_empty_models_path_in_the_dot_env_is_refused_by_the_script_and_the_settings_alike(
+    run_script: RunScript, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = run_script(dotenv="MODELS_PATH=\n", models_path=Use.UNSET)
+
+    assert run.process.returncode == 2
+    assert "MODELS_PATH must not be empty; unset it to use 'models'." in run.process.stderr
+    assert run.calls == []
+    monkeypatch.chdir(run.cwd)
+    with pytest.raises(ValidationError, match="must not be empty; unset it to use 'models'"):
+        Settings()
+
+
+def test_an_unknown_backend_in_the_dot_env_is_refused_with_the_value(run_script: RunScript) -> None:
+    run = run_script(dotenv="VLM_BACKEND=cuda\n")
+
+    assert run.process.returncode == 2
+    assert run.process.stderr == "VLM_BACKEND must be 'mlx' or 'transformers', not 'cuda'.\n"
+    assert run.calls == []
+
+
+@pytest.fixture
+def broken_project(tmp_path: Path) -> Path:
+    """A copy of the script next to a resolver that the test writes, in a project with nothing installed."""
+    project = tmp_path / "project"
+    (project / "scripts").mkdir(parents=True)
+    (project / "pyproject.toml").write_text('[project]\nname = "stub"\nversion = "0"\n', encoding="utf-8")
+    shutil.copy(SCRIPT, project / "scripts" / "download_models.sh")
+    return project
+
+
+def run_copy(project: Path, tmp_path: Path, fake_downloader: Path) -> subprocess.CompletedProcess[str]:
+    cwd = tmp_path / "cwd"
+    cwd.mkdir()
+    env = {"PATH": os.environ["PATH"], "HF_CLI": str(fake_downloader), "FAKE_HF_LOG": str(tmp_path / "calls.log")}
+    return subprocess.run(  # noqa: S603  # a copy of the script under test
+        [str(project / "scripts" / "download_models.sh")],
+        cwd=cwd,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+
+def test_a_resolver_that_crashes_is_a_tooling_failure_with_a_hint_and_downloads_nothing(
+    broken_project: Path, tmp_path: Path, fake_downloader: Path
+) -> None:
+    (broken_project / "scripts" / "resolve_model.py").write_text("import sys\nsys.exit(7)\n", encoding="utf-8")
+
+    result = run_copy(broken_project, tmp_path, fake_downloader)
+
+    assert result.returncode == 1
+    assert "make install" in result.stderr
+    assert not (tmp_path / "calls.log").exists()
+
+
+def test_a_resolver_that_prints_nothing_is_a_tooling_failure_and_downloads_nothing(
+    broken_project: Path, tmp_path: Path, fake_downloader: Path
+) -> None:
+    (broken_project / "scripts" / "resolve_model.py").write_text("print('only-one-line')\n", encoding="utf-8")
+
+    result = run_copy(broken_project, tmp_path, fake_downloader)
+
+    assert result.returncode == 1
+    assert "unexpected answer" in result.stderr
+    assert not (tmp_path / "calls.log").exists()

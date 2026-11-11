@@ -7,19 +7,53 @@ from fastapi import Request
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from formlens.modelspec import VlmBackend
+
 type Environment = Literal["local", "test", "production"]
 type LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 type LogFormat = Literal["auto", "json", "console"]
-type VlmBackend = Literal["mlx", "transformers"]
 
 
-class Settings(BaseSettings):
+class ModelSettings(BaseSettings):
+    """Where the document model lives and which backend runs it.
+
+    The service and `scripts/resolve_model.py` (behind `make download-models`) both read these two
+    settings, so a `.env` moves the download and the service together. It holds no other setting, so
+    an unrelated bad value in `.env` (`PORT=abc`) cannot block a download.
+    """
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    models_path: Path = Field(
+        default=Path("models"),
+        description=(
+            "Folder with the downloaded document models; a relative path is read from the working directory. "
+            "An empty value is refused."
+        ),
+    )
+    vlm_backend: VlmBackend = Field(
+        default="mlx",
+        description=(
+            "Inference backend of the document model: `mlx` (the backend this project uses on Apple Silicon) "
+            "or `transformers`."
+        ),
+    )
+
+    @field_validator("models_path", mode="before")
+    @classmethod
+    def _refuse_an_empty_models_path(cls, value: object) -> object:
+        """Refuse `MODELS_PATH=`: `Path("")` is the working directory, which no one means by an empty value."""
+        if isinstance(value, str) and value == "":
+            msg = "must not be empty; unset it to use 'models'"
+            raise ValueError(msg)
+        return value
+
+
+class Settings(ModelSettings):
     """Runtime configuration, read from the environment or a local `.env` file.
 
     Tests build it with `Settings(_env_file=None, ...)` so a developer's `.env` never leaks in.
     """
-
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     app_name: str = Field(default="formlens", description="Title shown in the API docs.")
     environment: Environment = Field(
@@ -54,33 +88,15 @@ class Settings(BaseSettings):
         default=20, ge=1, le=100, description="Page size when a list request gives no limit."
     )
 
-    models_path: Path = Field(
-        default=Path("models"),
-        description=(
-            "Folder with the downloaded document models; a relative path is read from the working directory. "
-            "An empty value is refused."
-        ),
-    )
-    vlm_backend: VlmBackend = Field(
-        default="mlx",
-        description=(
-            "Inference backend of the document model: `mlx` (the backend this project uses on Apple Silicon) "
-            "or `transformers`."
-        ),
-    )
     max_upload_mb: int = Field(default=25, ge=1, description="Largest accepted upload, in megabytes.")
     max_concurrency: int = Field(
         default=1, ge=1, description="Documents converted at the same time; the model is heavy, so keep it low."
     )
-
-    @field_validator("models_path", mode="before")
-    @classmethod
-    def _refuse_an_empty_models_path(cls, value: object) -> object:
-        """Refuse `MODELS_PATH=`: `Path("")` is the working directory, which no one means by an empty value."""
-        if isinstance(value, str) and value == "":
-            msg = "must not be empty; unset it to use 'models'"
-            raise ValueError(msg)
-        return value
+    parse_timeout_seconds: int = Field(
+        default=300,
+        ge=1,
+        description="Seconds one document may take to parse before the request fails with 500 `parse-failed`.",
+    )
 
     @property
     def resolved_log_format(self) -> Literal["json", "console"]:

@@ -10,11 +10,45 @@ from structlog.types import EventDict, Processor
 
 from formlens.config import Settings
 
-SENSITIVE_PARTS: Final = ("password", "token", "authorization", "api_key", "secret", "cookie")
+# A key is masked when it contains one of these parts. The last six keep a document, or its name, out of
+# the logs: `content` also masks `content_length` and a `content-type` header, and bare `text` is left
+# out on purpose, because it would mask `context`.
+SENSITIVE_PARTS: Final = (
+    "password",
+    "token",
+    "authorization",
+    "api_key",
+    "secret",
+    "cookie",
+    "filename",
+    "file_name",
+    "content",
+    "markdown",
+    "plain_text",
+    "extracted_text",
+)
 REDACTED: Final = "***"
 _HANDLER_TAG: Final = "_formlens_handler"
 # Extras uvicorn attaches to its own records; they repeat the message.
 _NOISY_EXTRAS: Final = ("color_message",)
+# Libraries of the document stack that log at INFO what a file is called or where a model sits. They
+# are held at WARNING (or at LOG_LEVEL when that is higher). Logger names are dotted, so the Python
+# package names with an underscore are separate roots.
+_QUIET_LOGGERS: Final = (
+    "docling",
+    "docling_core",
+    "docling_parse",
+    "docling_ibm_models",
+    "transformers",
+    "huggingface_hub",
+    "PIL",
+    "mlx",
+    "mlx_vlm",
+)
+# The multipart parser warns about framing it cannot read and quotes the offending body byte
+# ("Expected boundary character 45, got 137"). That byte is document content, so these loggers are held
+# at ERROR, higher than the rest.
+_BODY_LOGGERS: Final = ("python_multipart", "multipart")
 
 
 class _StdoutHandler(logging.StreamHandler[Any]):
@@ -126,3 +160,12 @@ def configure_logging(settings: Settings) -> None:
         uvicorn_logger = logging.getLogger(name)
         uvicorn_logger.handlers.clear()
         uvicorn_logger.propagate = True
+
+    # A record that reaches a handler is not checked against the root's level, so a logger of its own
+    # must never be quieter than LOG_LEVEL asks for and never louder than WARNING.
+    quiet_level = max(logging.WARNING, logging.getLevelNamesMapping()[settings.log_level])
+    for name in _QUIET_LOGGERS:
+        logging.getLogger(name).setLevel(quiet_level)
+    body_level = max(logging.ERROR, logging.getLevelNamesMapping()[settings.log_level])
+    for name in _BODY_LOGGERS:
+        logging.getLogger(name).setLevel(body_level)

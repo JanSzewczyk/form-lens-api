@@ -114,6 +114,94 @@ def test_stdlib_records_keep_their_extras_masked_and_without_uvicorns_duplicate(
     assert "color_message" not in line
 
 
+@pytest.mark.parametrize(
+    "key",
+    ["filename", "file_name", "content", "markdown", "plain_text", "extracted_text", "Content", "upload_filename"],
+)
+def test_keys_that_could_hold_a_document_or_its_name_are_masked(capsys: pytest.CaptureFixture[str], key: str) -> None:
+    configure_logging(make_settings(log_format="json"))
+
+    structlog.get_logger("probe").info("parsed", **{key: "secret-marker-9137", "page_count": 2})
+
+    [line] = lines(capsys)
+    assert line[key] == "***"
+    assert line["page_count"] == 2
+    assert "secret-marker-9137" not in json.dumps(line)
+
+
+def test_bare_text_is_not_masked_so_that_context_stays_readable(capsys: pytest.CaptureFixture[str]) -> None:
+    configure_logging(make_settings(log_format="json"))
+
+    structlog.get_logger("probe").info("parsed", text="kept", context="kept too")
+
+    [line] = lines(capsys)
+    assert (line["text"], line["context"]) == ("kept", "kept too")
+
+
+def test_content_also_masks_the_content_headers_and_nothing_else_of_a_mapping(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The cost of the `content` part: `content-type` and `content_length` are masked too (a known trade)."""
+    configure_logging(make_settings(log_format="json"))
+
+    structlog.get_logger("probe").info(
+        "inbound", headers={"content-type": "application/pdf", "content_length": 12, "accept": "*/*"}
+    )
+
+    [line] = lines(capsys)
+    assert line["headers"] == {"content-type": "***", "content_length": "***", "accept": "*/*"}
+
+
+QUIET_LOGGERS = ["docling", "docling_core", "docling_parse", "docling_ibm_models", "transformers", "huggingface_hub"]
+
+
+@pytest.fixture
+def restore_logger_levels() -> Iterator[None]:
+    """`configure_logging` sets levels on global loggers; put them back so no other test sees them."""
+    names = [*QUIET_LOGGERS, "PIL", "mlx", "mlx_vlm", "python_multipart", "multipart", "unrelated"]
+    saved = {name: logging.getLogger(name).level for name in names}
+    yield
+    for name, level in saved.items():
+        logging.getLogger(name).setLevel(level)
+
+
+@pytest.mark.parametrize("name", [*QUIET_LOGGERS, "PIL.PngImagePlugin", "mlx_vlm.utils", "transformers.modeling_utils"])
+def test_the_document_stack_logs_at_info_never_reach_the_output(
+    restore_logger_levels: None, capsys: pytest.CaptureFixture[str], name: str
+) -> None:
+    configure_logging(make_settings(log_format="json", log_level="DEBUG"))
+
+    logging.getLogger(name).info("loading %s", "upload.pdf")
+    logging.getLogger(name).warning("careful")
+
+    [line] = lines(capsys)
+    assert (line["event"], line["logger"]) == ("careful", name)
+
+
+def test_the_pin_never_lets_a_library_log_below_the_configured_level(
+    restore_logger_levels: None, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A logger set to WARNING would still write a WARNING when LOG_LEVEL is ERROR: the root level is not consulted."""
+    configure_logging(make_settings(log_format="json", log_level="ERROR"))
+
+    logging.getLogger("docling").warning("hidden")
+    logging.getLogger("docling").error("shown")
+
+    [line] = lines(capsys)
+    assert line["event"] == "shown"
+
+
+def test_a_logger_the_pin_does_not_name_still_follows_the_root_level(
+    restore_logger_levels: None, capsys: pytest.CaptureFixture[str]
+) -> None:
+    configure_logging(make_settings(log_format="json", log_level="DEBUG"))
+
+    logging.getLogger("unrelated").debug("still visible")
+
+    [line] = lines(capsys)
+    assert line["event"] == "still visible"
+
+
 class _CountingMapping(Mapping[str, str]):
     """A mapping that counts how often a processor walks it."""
 
@@ -332,3 +420,16 @@ def test_entry_point_starts_uvicorn_with_our_logging(monkeypatch: pytest.MonkeyP
     assert kwargs["access_log"] is False
     assert kwargs["server_header"] is False
     assert kwargs["timeout_graceful_shutdown"] == 20
+
+
+@pytest.mark.parametrize("name", ["python_multipart", "python_multipart.multipart", "multipart"])
+def test_the_multipart_parser_is_held_at_error_so_it_cannot_quote_a_body_byte(
+    restore_logger_levels: None, capsys: pytest.CaptureFixture[str], name: str
+) -> None:
+    configure_logging(make_settings(log_format="json", log_level="DEBUG"))
+
+    logging.getLogger(name).warning("Expected boundary character %r, got %r at index %d", 45, 137, 2)
+    logging.getLogger(name).error("kept")
+
+    [line] = lines(capsys)
+    assert line["event"] == "kept"

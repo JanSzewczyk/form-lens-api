@@ -2,6 +2,9 @@
 
 import json
 import re
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +14,7 @@ from fastapi.routing import APIRoute, iter_route_contexts
 from fastapi.testclient import TestClient
 
 from formlens.main import create_app
-from formlens.openapi import add_tags
+from formlens.openapi import add_tags, install_openapi
 from formlens.problems import PROBLEM_MEDIA_TYPE, VALIDATION_ERROR
 from tests.conftest import make_settings
 from tests.probes import add_probe_routes
@@ -177,3 +180,29 @@ def test_add_tags_works_on_an_app_without_tags() -> None:
     add_tags(app, {"name": "only", "description": "Alone."})
 
     assert app.openapi_tags == [{"name": "only", "description": "Alone."}]
+
+
+def test_concurrent_first_calls_build_the_document_once() -> None:
+    """A cold app is asked for its document by every request, from several worker threads at once."""
+    app = FastAPI()
+    builds: list[int] = []
+
+    def slow_build() -> dict[str, Any]:
+        builds.append(1)
+        time.sleep(0.05)  # long enough for every thread to be inside, if nothing held them back
+        app.openapi_schema = {"openapi": "3.1.0", "paths": {}}
+        return app.openapi_schema
+
+    app.openapi = slow_build  # type: ignore[method-assign]  # stand in for FastAPI's own build
+    install_openapi(app)
+    barrier = threading.Barrier(6, timeout=5)
+
+    def ask(_: int) -> dict[str, Any]:
+        barrier.wait()
+        return app.openapi()
+
+    with ThreadPoolExecutor(6) as pool:
+        documents = list(pool.map(ask, range(6)))
+
+    assert len(builds) == 1
+    assert all(document is documents[0] for document in documents)

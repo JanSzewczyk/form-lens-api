@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Start the service, run Schemathesis against openapi.json with every check and phase, stop it.
+# Start the service with a fake parser (tests/schemathesis_app.py, so no model is loaded), run
+# Schemathesis against openapi.json with every check and phase, stop it.
 # Usage: scripts/run_schemathesis.sh [extra schemathesis arguments]
 set -euo pipefail
 
@@ -15,8 +16,11 @@ fi
 
 LOG="$(mktemp -t schemathesis-server.XXXXXX)"
 
-HOST=127.0.0.1 PORT="$PORT" ENVIRONMENT=test LOG_FORMAT=json LOG_LEVEL=INFO \
-    uv run python -m formlens >"$LOG" 2>&1 &
+# The same server settings as `python -m formlens`: no Server header, no access log (the middleware
+# writes it). Only the app differs: a test factory with a fake parser; production code has no switch.
+ENVIRONMENT=test LOG_FORMAT=json LOG_LEVEL=INFO \
+    uv run uvicorn --factory tests.schemathesis_app:create_schemathesis_app \
+    --host 127.0.0.1 --port "$PORT" --no-server-header --no-access-log >"$LOG" 2>&1 &
 SERVER_PID=$!
 trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true; rm -f "$LOG"' EXIT
 

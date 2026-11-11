@@ -12,7 +12,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
-from formlens.config import Settings, get_settings
+from formlens.config import ModelSettings, Settings, get_settings
 from formlens.main import create_app
 from tests.conftest import make_settings
 
@@ -34,6 +34,7 @@ def test_model_settings_default_to_the_local_apple_silicon_setup() -> None:
     assert settings.vlm_backend == "mlx"
     assert settings.max_upload_mb == 25
     assert settings.max_concurrency == 1
+    assert settings.parse_timeout_seconds == 300
 
 
 def test_a_copied_env_example_keeps_the_docs_off_in_production() -> None:
@@ -135,6 +136,7 @@ NON_DEFAULT_ENVIRONMENT = {
     "VLM_BACKEND": "transformers",
     "MAX_UPLOAD_MB": "5",
     "MAX_CONCURRENCY": "3",
+    "PARSE_TIMEOUT_SECONDS": "7",
 }
 
 
@@ -153,9 +155,9 @@ def test_the_settings_tests_pass_when_the_shell_exports_every_setting() -> None:
     """A developer who exports `DOCS_ENABLED=true` or `VLM_BACKEND=transformers` sees no failing test.
 
     Every test builds Settings with `_env_file=None`, which skips the file but not the shell. The autouse
-    fixture in `tests/conftest.py` deletes the settings from the environment, except for the `slow` tests:
-    `make test-models MODELS_PATH=/data/models` (README) needs the variables they read. The child run holds
-    the tests that read the defaults, so it fails when the fixture stops deleting a variable.
+    fixture in `tests/conftest.py` deletes the settings from the environment; the `slow` tests keep
+    `MODELS_PATH` and `VLM_BACKEND`: `make test-models MODELS_PATH=/data/models` (README) needs them.
+    The child run holds the tests that read the defaults, so it fails when the fixture stops deleting a variable.
     """
     environment = {**os.environ, **NON_DEFAULT_ENVIRONMENT}
     here = "tests/test_config.py"
@@ -193,6 +195,9 @@ def test_the_settings_tests_pass_when_the_shell_exports_every_setting() -> None:
         ("MAX_UPLOAD_MB", "1.5"),
         ("MAX_UPLOAD_MB", ""),
         ("MODELS_PATH", ""),
+        ("PARSE_TIMEOUT_SECONDS", "0"),
+        ("PARSE_TIMEOUT_SECONDS", "-5"),
+        ("PARSE_TIMEOUT_SECONDS", "soon"),
         ("MAX_CONCURRENCY", "0"),
         ("MAX_CONCURRENCY", "-3"),
         ("MAX_CONCURRENCY", "two"),
@@ -207,6 +212,9 @@ def test_the_settings_tests_pass_when_the_shell_exports_every_setting() -> None:
         "upload-fraction",
         "upload-empty",
         "models-path-empty",
+        "timeout-zero",
+        "timeout-negative",
+        "timeout-text",
         "concurrency-zero",
         "concurrency-negative",
         "concurrency-text",
@@ -224,7 +232,7 @@ def test_an_invalid_model_setting_in_the_environment_stops_the_app_from_being_bu
         create_app()
 
 
-@pytest.mark.parametrize("name", ["MAX_UPLOAD_MB", "MAX_CONCURRENCY"])
+@pytest.mark.parametrize("name", ["MAX_UPLOAD_MB", "MAX_CONCURRENCY", "PARSE_TIMEOUT_SECONDS"])
 def test_one_is_the_smallest_accepted_count(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
     monkeypatch.setenv(name, "1")
 
@@ -292,3 +300,61 @@ def test_the_service_refuses_to_start_on_an_invalid_model_setting(tmp_path: Path
 
     assert result.returncode != 0
     assert "vlm_backend" in result.stderr
+
+
+# --- ModelSettings: the two settings the service and the downloader share -------------------------
+
+
+def test_settings_are_model_settings_with_the_same_two_fields_and_defaults() -> None:
+    models = ModelSettings(_env_file=None)
+    settings = Settings(_env_file=None)
+
+    assert isinstance(settings, ModelSettings)
+    assert set(ModelSettings.model_fields) == {"models_path", "vlm_backend"}
+    assert (models.models_path, models.vlm_backend) == (Path("models"), "mlx")
+    assert (settings.models_path, settings.vlm_backend) == (models.models_path, models.vlm_backend)
+
+
+def test_model_settings_ignore_an_unrelated_bad_value_in_the_env_file(tmp_path: Path) -> None:
+    """A `.env` with `PORT=abc` stops the service, but it must not stop `make download-models`."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("PORT=abc\nVLM_BACKEND=transformers\nMODELS_PATH=weights\n", encoding="utf-8")
+
+    models = ModelSettings(_env_file=env_file)
+
+    assert (models.vlm_backend, models.models_path) == ("transformers", Path("weights"))
+    with pytest.raises(ValidationError, match="port"):
+        Settings(_env_file=env_file)
+
+
+def test_model_settings_read_the_dot_env_of_the_working_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".env").write_text("VLM_BACKEND=transformers\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert ModelSettings().vlm_backend == "transformers"
+    assert Settings().vlm_backend == "transformers"
+
+
+def test_the_environment_beats_the_env_file_for_the_model_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".env").write_text("VLM_BACKEND=transformers\nMODELS_PATH=from-file\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("VLM_BACKEND", "mlx")
+
+    models = ModelSettings()
+
+    assert (models.vlm_backend, models.models_path) == ("mlx", Path("from-file"))
+
+
+def test_model_settings_refuse_an_empty_models_path() -> None:
+    with pytest.raises(ValidationError, match="must not be empty; unset it to use 'models'"):
+        ModelSettings(_env_file=None, models_path="")  # type: ignore[arg-type]  # a text: the empty value must be refused
+
+
+@pytest.mark.parametrize("backend", ["cuda", "MLX", "", " mlx"], ids=["unknown", "wrong-case", "empty", "padded"])
+def test_model_settings_refuse_an_unknown_backend(backend: str) -> None:
+    with pytest.raises(ValidationError, match="vlm_backend"):
+        ModelSettings(_env_file=None, vlm_backend=backend)  # type: ignore[arg-type]  # the point of the test

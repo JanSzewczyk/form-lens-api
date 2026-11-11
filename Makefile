@@ -29,10 +29,11 @@ imports:
 test:
 	uv run pytest
 
-# The tests marked `slow` need the downloaded models (make download-models); they fail, not skip,
-# when the files are missing. `make check` deselects them.
+# The tests marked `slow` need the downloaded models (make download-models): the model files check, the
+# real model through the app and the offline check. They fail, not skip, when the files are missing.
+# `make check` deselects them.
 test-models:
-	uv run pytest -m slow tests/test_models.py
+	uv run pytest -m slow
 
 # The one command CI runs: format, lint, types, import contracts, tests with coverage, spec drift.
 check:
@@ -80,12 +81,16 @@ schemathesis:
 api-check: openapi-check api-lint api-breaking schemathesis
 
 # Every dependency group, the contract tooling too. pipefail: a failed export must not pass as
-# an empty, clean audit.
+# an empty, clean audit. On Linux the lock pins torch and torchvision as `2.15.0+cpu`, a local version
+# that is not on PyPI, so pip-audit would skip them and still exit 0; sed drops the `+cpu` so the same
+# release on PyPI is audited (the advisories name the release, not the build).
 audit:
 	set -o pipefail; uv export --locked --no-emit-project --all-groups --quiet \
+		| sed 's/+cpu / /' \
 		| $(PIP_AUDIT) --disable-pip -r /dev/stdin
 
-# Downloads the pinned model for VLM_BACKEND (default mlx) into MODELS_PATH (default models/):
+# Downloads the pinned model for VLM_BACKEND (default mlx) into MODELS_PATH (default models/). Both
+# are read like the service reads them: the environment, then .env, then the defaults.
 # make download-models VLM_BACKEND=transformers
 download-models:
 	scripts/download_models.sh
@@ -93,12 +98,16 @@ download-models:
 docker-build:
 	docker build -t formlens:local .
 
-# Needs a .env (cp .env.example .env). HOST and PORT are forced: the server must listen on 0.0.0.0.
-# ENVIRONMENT is forced too, as in compose.yaml: --env-file would otherwise replace the image's
-# `production` with the `local` of .env.example. -e wins over --env-file.
+# Needs a .env (cp .env.example .env) and the transformers model (make download-models
+# VLM_BACKEND=transformers), mounted read-only; MODELS_PATH (default models/) names the host folder.
+# HOST, PORT, ENVIRONMENT, VLM_BACKEND and MODELS_PATH are forced: the server must listen on 0.0.0.0,
+# --env-file would replace the image's `production` with the `local` of .env.example, `mlx` does not
+# run in a Linux container and the container sees the model at /models. -e wins over --env-file.
 docker-run:
 	docker run --rm -p 8000:8000 --read-only --tmpfs /tmp --env-file .env \
-		-e HOST=0.0.0.0 -e PORT=8000 -e ENVIRONMENT=production formlens:local
+		--volume "$(abspath $(or $(MODELS_PATH),models)):/models:ro" \
+		-e HOST=0.0.0.0 -e PORT=8000 -e ENVIRONMENT=production \
+		-e VLM_BACKEND=transformers -e MODELS_PATH=/models formlens:local
 
 clean:
 	rm -rf .mypy_cache .pytest_cache .ruff_cache .hypothesis .import_linter_cache .schemathesis \

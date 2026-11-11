@@ -9,10 +9,16 @@ license-files = ["LICENSE"]
 classifiers = ["Private :: Do Not Upload"]
 requires-python = ">=3.15"
 dependencies = [
+    "docling[vlm]>=2.149.0",
     "fastapi>=0.162.2",
     "pydantic>=2.14.3",
     "pydantic-settings>=2.16.2",
+    "python-multipart>=0.0.33",
     "structlog>=26.1.0",
+    # Docling needs them already. Listed here because `[tool.uv.sources]` applies to direct dependencies
+    # only: it keeps Linux off the CUDA build of torch (see the sources below).
+    "torch>=2.15.0",
+    "torchvision>=0.29.2",
     "uvicorn[standard]>=0.54.0",
 ]
 
@@ -34,6 +40,7 @@ dev = [
     "import-linter>=2.16",
     "mypy>=2.4.1",
     "ruff>=0.17.4",
+    "types-jsonschema>=4.26.0.20261006",
 ]
 release = [
     "python-semantic-release>=10",
@@ -43,6 +50,7 @@ test = [
     "factory-boy>=3.3.3",
     "httpx2>=2.16.0",
     "hypothesis>=6.170.15",
+    "jsonschema>=4.26.0",
     "pytest>=9.2.0",
     "pytest-randomly>=5.0.0",
     "pytest-timeout>=2.4.0",
@@ -119,6 +127,18 @@ markers = [
 required-version = ">=0.13.7"
 default-groups = ["dev", "test"]
 
+# On Linux, torch from PyPI pulls the CUDA stack (15 nvidia-* packages, cuda-toolkit, triton: about
+# 3 GB of wheels). The service runs on a CPU there, so Linux takes the CPU wheels (about 210 MB);
+# macOS and Windows keep PyPI's torch.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
 [tool.coverage.run]
 branch = true
 source = ["formlens", "scripts"]
@@ -137,8 +157,9 @@ type = "layers"
 layers = [
     "formlens.__main__",
     "formlens.main",
-    "formlens.health | formlens.middleware | formlens.openapi | formlens.logging_config | formlens.pagination",
+    "formlens.health | formlens.middleware | formlens.openapi | formlens.logging_config | formlens.pagination | formlens.parsing",
     "formlens.problems | formlens.config | formlens.query | formlens.types",
+    "formlens.modelspec",
 ]
 
 [[tool.importlinter.contracts]]
@@ -150,13 +171,66 @@ source_modules = [
     "formlens.health",
     "formlens.logging_config",
     "formlens.middleware",
+    "formlens.modelspec",
     "formlens.openapi",
     "formlens.pagination",
+    "formlens.parsing",
     "formlens.problems",
     "formlens.query",
     "formlens.types",
 ]
 forbidden_modules = ["uvicorn"]
+
+
+[[tool.importlinter.contracts]]
+name = "Only the Docling adapter imports the document stack"
+type = "forbidden"
+source_modules = ["formlens"]
+forbidden_modules = ["docling", "torch", "transformers", "mlx_vlm", "PIL"]
+# The one door: the adapter imports Docling inside build_docling_parser. A chain through it from main
+# goes away with this edge, so the adapter does not make every module that imports it a violation.
+ignore_imports = ["formlens.parsing.docling_parser -> docling"]
+
+[[tool.importlinter.contracts]]
+name = "Parsing is layered: router, dependencies, service, then ports, slots and models, then exceptions"
+type = "layers"
+layers = [
+    "formlens.parsing.router",
+    "formlens.parsing.dependencies",
+    "formlens.parsing.service",
+    "formlens.parsing.slots | formlens.parsing.ports | formlens.parsing.models",
+    "formlens.parsing.exceptions",
+]
+
+[[tool.importlinter.contracts]]
+name = "Only the application factory imports the Docling adapter"
+type = "forbidden"
+# Listed one by one: a source that contains the forbidden module (`formlens` itself) makes the check
+# find nothing. `formlens.main` and `formlens.__main__` are left out on purpose: main is the door.
+# `tests/test_tooling.py` fails when a module of the package is neither listed here nor left out.
+source_modules = [
+    "formlens.config",
+    "formlens.health",
+    "formlens.logging_config",
+    "formlens.middleware",
+    "formlens.modelspec",
+    "formlens.openapi",
+    "formlens.pagination",
+    "formlens.parsing.body_limit",
+    "formlens.parsing.dependencies",
+    "formlens.parsing.errors",
+    "formlens.parsing.exceptions",
+    "formlens.parsing.models",
+    "formlens.parsing.ports",
+    "formlens.parsing.router",
+    "formlens.parsing.schemas",
+    "formlens.parsing.service",
+    "formlens.parsing.slots",
+    "formlens.problems",
+    "formlens.query",
+    "formlens.types",
+]
+forbidden_modules = ["formlens.parsing.docling_parser"]
 
 # Releases: python-semantic-release reads Conventional Commits on main, bumps `version` above,
 # refreshes uv.lock, tags `vX.Y.Z` and creates the GitHub Release (see .github/workflows/release.yml).

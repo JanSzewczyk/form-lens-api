@@ -11,11 +11,11 @@ def broken() -> None:
     raise ConnectionError("db password is hunter2")
 
 
-def test_ready_with_no_checks(client: TestClient) -> None:
+def test_ready_lists_only_the_model_check_when_nothing_else_is_registered(client: TestClient) -> None:
     response = client.get("/health/ready")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ready", "checks": {}}
+    assert response.json() == {"status": "ready", "checks": {"model": "ok"}}
 
 
 def test_ready_lists_each_passing_check(app: FastAPI, client: TestClient) -> None:
@@ -23,7 +23,7 @@ def test_ready_lists_each_passing_check(app: FastAPI, client: TestClient) -> Non
 
     response = client.get("/health/ready")
 
-    assert response.json() == {"status": "ready", "checks": {"storage": "ok"}}
+    assert response.json() == {"status": "ready", "checks": {"model": "ok", "storage": "ok"}}
 
 
 def test_failed_check_is_a_503_problem_naming_the_check_not_the_error(

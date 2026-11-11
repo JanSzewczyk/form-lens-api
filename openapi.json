@@ -1,6 +1,22 @@
 {
   "components": {
     "schemas": {
+      "Body_parse_document": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "The document: a PDF, PNG, JPEG or TIFF file. An empty file is refused with 400.",
+            "minLength": 1,
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_parse_document",
+        "type": "object"
+      },
       "HealthResponse": {
         "description": "Liveness probe payload.",
         "properties": {
@@ -16,6 +32,62 @@
           }
         },
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "OutputFormat": {
+        "description": "How the extracted text is returned.",
+        "enum": [
+          "markdown",
+          "text"
+        ],
+        "title": "OutputFormat",
+        "type": "string"
+      },
+      "ParseResponse": {
+        "description": "The text extracted from one document.",
+        "properties": {
+          "elapsed_ms": {
+            "description": "Time the model took, in milliseconds.",
+            "examples": [
+              8400
+            ],
+            "minimum": 0.0,
+            "title": "Elapsed Ms",
+            "type": "integer"
+          },
+          "model": {
+            "description": "The model that read the document.",
+            "examples": [
+              "ibm-granite/granite-docling-258M-mlx"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "page_count": {
+            "description": "Number of pages the model read.",
+            "examples": [
+              1
+            ],
+            "minimum": 0.0,
+            "title": "Page Count",
+            "type": "integer"
+          },
+          "text": {
+            "description": "The text of the document, as Markdown or as plain text, depending on `format`.",
+            "examples": [
+              "# Invoice 2024-001\n\nTotal: 120.00 EUR"
+            ],
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "page_count",
+          "elapsed_ms",
+          "model"
+        ],
+        "title": "ParseResponse",
         "type": "object"
       },
       "ProblemDetail": {
@@ -251,6 +323,122 @@
           "health"
         ]
       }
+    },
+    "/v1/documents/parse": {
+      "post": {
+        "description": "Parse a document and return its text.\n\nSend the file as multipart form data in the `file` field. The type is read from the file's own\nbytes, not from its name or Content-Type. A busy parser answers 503 with a `Retry-After` header.",
+        "operationId": "parse_document",
+        "parameters": [
+          {
+            "description": "`markdown` keeps headings and tables; `text` is plain text.",
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/OutputFormat",
+              "default": "markdown",
+              "description": "`markdown` keeps headings and tables; `text` is plain text."
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_parse_document"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "The file is empty or cannot be read (`invalid-file`), or the multipart body is malformed (`about:blank`)."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "File too large (`file-too-large`)"
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Unsupported media type (`unsupported-media-type`)"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Request validation failed (`validation-error`): `file` is missing, is sent more than once or is a plain field; `format` is unknown."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "The model failed or ran out of time (`parse-failed`)."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Model unavailable (`model-unavailable`); Parser busy (`parser-busy`)",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before trying again; set when the parser is busy.",
+                "schema": {
+                  "examples": [
+                    5
+                  ],
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Parse Document",
+        "tags": [
+          "documents"
+        ]
+      }
     }
   },
   "servers": [
@@ -263,6 +451,10 @@
     {
       "description": "Liveness and readiness probes. Not versioned.",
       "name": "health"
+    },
+    {
+      "description": "Upload a document and read its text. The model runs on the server; nothing leaves it.",
+      "name": "documents"
     }
   ]
 }

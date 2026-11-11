@@ -83,20 +83,39 @@ jobs:
           tags: formlens:local # the image compose.yaml runs
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      # compose.yaml runs it read-only, without capabilities and with no-new-privileges; `--wait`
-      # waits for the image HEALTHCHECK.
-      - name: Start with Compose 🐳
-        run: docker compose up --detach --no-build --wait --wait-timeout 90
-      - name: Call /health 🩺
-        run: curl --silent --show-error --fail --retry 3 --retry-all-errors http://127.0.0.1:8000/health
-      - name: Show Compose logs 📋
-        if: failure()
-        run: docker compose logs
+      # The image has no model: starting it with an empty models folder must fail, loudly and at once,
+      # with the `model_load_failed` event that tells the operator to run `make download-models`.
+      # (A model is 0.6 GB and never goes into the image or into CI.) For the same reason there is no
+      # `docker compose up --wait` here: without a model the service never becomes healthy.
+      - name: The image refuses to start without the model 🚫
+        run: |
+          mkdir "$RUNNER_TEMP/empty-models"
+          status=0
+          timeout 120 docker run --rm --read-only --tmpfs /tmp \
+            --volume "$RUNNER_TEMP/empty-models:/models:ro" --env MODELS_PATH=/models \
+            formlens:local > "$RUNNER_TEMP/start.log" 2>&1 || status=$?
+          cat "$RUNNER_TEMP/start.log"
+          # Separate lines: under `bash -e` a failed `test` in the middle of an `&&` list does not stop the step.
+          test "$status" -ne 0 # it failed
+          test "$status" -ne 124 # on its own, not by hanging until the timeout
+          grep --quiet model_load_failed "$RUNNER_TEMP/start.log"
+      # The start-up check above stops at `missing_model_files`, before any Docling import, so it passes
+      # even if the image cannot import Docling or torch. This is the step that proves the image can.
+      # It runs without --read-only, --tmpfs and the models mount, so it shows no failure that only the
+      # read-only container causes.
+      - name: The image can import Docling and torch 📦
+        run: docker run --rm formlens:local python -c "import docling.document_converter, torch"
+      - name: Validate compose.yaml 🧾
+        run: docker compose config --quiet # compose.yaml is valid, with its defaults
 
   # Informational: the free-threaded build exposes races the GIL hides. Never blocks a merge.
+  # Switched off: `uv sync --locked --python 3.15t` cannot install the runtime dependencies. torch and mlx
+  # have free-threaded wheels, but `av` (abi3 wheels only, and its sdist needs pkg-config), `docling-parse`
+  # (cp315 wheels only) and pyarrow (no Linux wheel for 3.15 at all) have none, so the job would only
+  # fail. Turn it on (remove `if: false`) when `uv sync --python 3.15t` works again.
   free-threaded:
     name: Free-threaded 🧵
-    if: github.event_name != 'schedule'
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     continue-on-error: true

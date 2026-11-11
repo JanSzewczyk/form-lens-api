@@ -162,6 +162,7 @@ layers = [
     "formlens.__main__",
     "formlens.main",
     "formlens.migrations",
+    "formlens.extractions",
     "formlens.health | formlens.middleware | formlens.openapi | formlens.logging_config | formlens.parsing | formlens.templates",
     "formlens.pagination | formlens.database",
     "formlens.problems | formlens.config | formlens.query | formlens.types",
@@ -175,6 +176,7 @@ source_modules = [
     "formlens.main",
     "formlens.config",
     "formlens.database",
+    "formlens.extractions",
     "formlens.health",
     "formlens.logging_config",
     "formlens.middleware",
@@ -250,6 +252,29 @@ layers = [
 ]
 
 [[tool.importlinter.contracts]]
+name = "Extractions are layered: entry points, then the service layer and the adapters, then the domain"
+type = "layers"
+layers = [
+    "(formlens.extractions.entrypoints)",  # optional until step 7 adds it
+    "formlens.extractions.service_layer | formlens.extractions.adapters",
+    "formlens.extractions.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "The extraction domain and service layer import no framework, database, client or adapter"
+type = "forbidden"
+source_modules = ["formlens.extractions.domain", "formlens.extractions.service_layer"]
+forbidden_modules = [
+    "sqlalchemy",
+    "fastapi",
+    "starlette",
+    "httpx2",
+    "alembic",
+    "jsonschema",
+    "formlens.extractions.adapters",
+]
+
+[[tool.importlinter.contracts]]
 name = "Only the application factory imports the Docling adapter"
 type = "forbidden"
 # Listed one by one: a source that contains the forbidden module (`formlens` itself) makes the check
@@ -258,6 +283,7 @@ type = "forbidden"
 source_modules = [
     "formlens.config",
     "formlens.database",
+    "formlens.extractions",
     "formlens.health",
     "formlens.logging_config",
     "formlens.middleware",

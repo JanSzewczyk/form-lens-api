@@ -11,6 +11,7 @@ from hypothesis import strategies as st
 
 from formlens.main import create_app
 from tests.conftest import make_settings
+from tests.fakes import FakeParser
 
 
 def test_health_returns_ok() -> None:
@@ -104,7 +105,9 @@ def test_a_near_miss_of_a_probe_path_is_a_404_problem_and_never_a_redirect_or_a_
 @example(path="v1/documents/parse")  # a real path, reached with the wrong method: 405
 @given(path=st.text(alphabet=st.characters(codec="utf-8"), min_size=1, max_size=40))
 def test_no_path_makes_the_service_answer_with_anything_but_a_documented_status(path: str) -> None:
-    client = TestClient(create_app(make_settings()), raise_server_exceptions=False)
+    app = create_app(make_settings())
+    app.state.parser = FakeParser()  # a loaded model: `health/ready` is a real path and must answer 200, not 503
+    client = TestClient(app, raise_server_exceptions=False)
 
     response = client.get("/" + quote(path.lstrip("/"), safe="/"), follow_redirects=False)
 

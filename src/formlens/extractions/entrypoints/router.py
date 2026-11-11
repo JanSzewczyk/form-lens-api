@@ -3,9 +3,9 @@
 from typing import Annotated, Any, Final
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Form, Path, Response
+from fastapi import APIRouter, Depends, Path, Response
 
-from formlens.extractions.entrypoints.dependencies import get_extraction_service
+from formlens.extractions.entrypoints.dependencies import get_extraction_service, read_template_id
 from formlens.extractions.entrypoints.errors import EXTRACTION_NOT_FOUND, QUEUE_FULL
 from formlens.extractions.entrypoints.schemas import ExtractionResponse
 from formlens.extractions.service_layer.service import ExtractionService
@@ -65,7 +65,7 @@ def _unavailable() -> dict[str, Any]:
             VALIDATION_ERROR,
             description=(
                 "Request validation failed (`validation-error`): `file` is missing, is sent more than once or is a "
-                "plain field; `template_id` is missing or is not a UUID."
+                "plain field; `template_id` is missing, is sent more than once or is not a UUID."
             ),
         ),
         503: _unavailable(),
@@ -74,7 +74,7 @@ def _unavailable() -> dict[str, Any]:
 def create_extraction(
     service: Annotated[ExtractionService, Depends(get_extraction_service)],
     content: Annotated[bytes, Depends(read_upload)],
-    template_id: Annotated[UUID, Form(description="Identifier of the template to read the document against.")],
+    template_id: Annotated[UUID, Depends(read_template_id)],
     response: Response,
 ) -> ExtractionResponse:
     """Queue a document to be read against a template.

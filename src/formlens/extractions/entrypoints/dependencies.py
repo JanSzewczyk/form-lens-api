@@ -2,8 +2,10 @@
 
 from datetime import timedelta
 from typing import Annotated, cast
+from uuid import UUID
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Form, Request
+from fastapi.exceptions import RequestValidationError
 
 from formlens.config import Settings, get_settings
 from formlens.extractions.adapters.parsing_text_source import ParsingTextSource
@@ -15,6 +17,7 @@ from formlens.parsing.exceptions import ModelUnavailable
 from formlens.parsing.ports import DocumentParser, ParseResult
 from formlens.parsing.service import DocumentService
 from formlens.parsing.slots import ParseSlots
+from formlens.query import REPEATED_PARAMETER
 from formlens.templates.dependencies import get_template_service
 from formlens.templates.service import TemplateService
 
@@ -60,3 +63,28 @@ def get_extraction_service(
         max_pending=settings.queue_max_pending,
         result_ttl=timedelta(hours=settings.result_ttl_hours),
     )
+
+
+async def read_template_id(
+    request: Request,
+    template_id: Annotated[UUID, Form(description="Identifier of the template to read the document against.")],
+) -> UUID:
+    """Read `template_id`, once.
+
+    Starlette keeps only the last of several parts of the same name, so `["not-a-uuid", "<valid id>"]` would be
+    read as the valid one and `["<valid id>", "<unknown id>"]` as the unknown one: the request would mean
+    something different from what its first part says. It is refused with 422, like a repeated `file`.
+    """
+    form = await request.form()  # already parsed for `template_id`; Starlette caches it on the request
+    if len(form.getlist("template_id")) > 1:
+        raise RequestValidationError(
+            [
+                {
+                    "type": REPEATED_PARAMETER,
+                    "loc": ("body", "template_id"),
+                    "msg": "Send the template_id once.",
+                    "input": None,
+                }
+            ]
+        )
+    return template_id

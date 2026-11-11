@@ -13,6 +13,8 @@ for people. Types are `urn:problem:formlens:<slug>`.
 | `parse-failed` | 500 | Document could not be parsed | The model failed, ran past `PARSE_TIMEOUT_SECONDS`, or returned an incomplete result. An incomplete text is never returned. |
 | `model-unavailable` | 503 | Model unavailable | The document model is not loaded. |
 | `parser-busy` | 503 | Parser busy | Every parsing slot (`MAX_CONCURRENCY`) is taken. The `Retry-After` header says how many seconds to wait. Nothing is queued. |
+| `template-not-found` | 404 | Template not found | `GET`, `PUT` or `DELETE /v1/templates/{template_id}`: no template has this id. |
+| `invalid-template` | 422 | Invalid template | `POST /v1/templates` or `PUT /v1/templates/{template_id}`: the body is well formed but the template breaks a rule. `detail` names the field and the rule, never a value the client sent. The rules: 1 to 50 fields with unique names of `a-z`, `0-9` and `_` (starting with a letter, at most 64 characters); a `choice` has 1 to 50 distinct `allowed_values` and no other type has any; `minimum` and `maximum` are finite, only for `number` and `integer`, and not in the wrong order; `pattern` is only for `text`, at most 200 characters and a valid regular expression; the name is 1 to 100 characters and the descriptions at most 300. |
 
 Errors the framework raises use `type` `about:blank` and the HTTP status phrase as `title`:
 

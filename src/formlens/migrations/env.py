@@ -5,6 +5,7 @@ It never calls `logging.config.fileConfig`: that would replace the handlers `con
 
 from alembic import context
 
+import formlens.templates.tables  # noqa: F401  # registers the table on Base.metadata
 from formlens.database import Base, Database
 
 config = context.config

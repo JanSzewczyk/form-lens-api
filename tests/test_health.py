@@ -124,13 +124,18 @@ def test_a_request_id_is_echoed_if_and_only_if_it_is_safe(request_id: str) -> No
     assert re.fullmatch(r"[A-Za-z0-9._-]{1,64}", response.headers["X-Request-ID"])
 
 
-def test_the_committed_document_has_the_two_probe_operations_and_the_parsing_one() -> None:
+def test_the_committed_document_has_the_two_probe_operations_and_those_of_the_features() -> None:
     spec: dict[str, Any] = json.loads((Path(__file__).resolve().parent.parent / "openapi.json").read_text())
 
     assert {(path, method) for path, item in spec["paths"].items() for method in item} == {
         ("/health", "get"),
         ("/health/ready", "get"),
         ("/v1/documents/parse", "post"),
+        ("/v1/templates", "get"),
+        ("/v1/templates", "post"),
+        ("/v1/templates/{template_id}", "delete"),
+        ("/v1/templates/{template_id}", "get"),
+        ("/v1/templates/{template_id}", "put"),
     }
     assert sorted(spec["paths"]["/health/ready"]["get"]["responses"]) == ["200", "503"]
     assert sorted(spec["paths"]["/health"]["get"]["responses"]) == ["200"]

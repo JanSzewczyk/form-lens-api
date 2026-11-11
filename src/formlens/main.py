@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI
 from starlette.concurrency import run_in_threadpool
 
 from formlens.config import Settings
+from formlens.database import Database
 from formlens.health.readiness import install_readiness, register_readiness_check
 from formlens.health.router import router as health_router
 from formlens.logging_config import configure_logging
@@ -28,6 +29,10 @@ from formlens.parsing.router import router as parsing_router
 from formlens.parsing.slots import ParseSlots
 from formlens.problems import add_problem_handlers, register_domain_errors
 from formlens.query import reject_repeated_query_parameters
+from formlens.templates.errors import ERRORS as TEMPLATE_ERRORS
+from formlens.templates.repository import SqliteTemplateRepository
+from formlens.templates.router import TEMPLATES_TAG
+from formlens.templates.router import router as templates_router
 
 log = structlog.get_logger(__name__)
 
@@ -75,6 +80,7 @@ def create_app(settings: Settings | None = None, *, parser_factory: ParserFactor
             raise
         yield
         application.state.parser = None
+        application.state.database.dispose()
 
     app = FastAPI(
         lifespan=lifespan,
@@ -84,19 +90,26 @@ def create_app(settings: Settings | None = None, *, parser_factory: ParserFactor
         openapi_url="/openapi.json" if settings.docs_enabled else None,
         redirect_slashes=False,
         dependencies=[Depends(reject_repeated_query_parameters)],
-        openapi_tags=[HEALTH_TAG, DOCUMENTS_TAG],
+        openapi_tags=[HEALTH_TAG, DOCUMENTS_TAG, TEMPLATES_TAG],
         **METADATA,
     )
     app.state.settings = settings
     app.state.parser = None
     app.state.parse_slots = ParseSlots(settings.max_concurrency)
+    # Building the database opens no connection and creates no file: the first query does. The tables come
+    # from `make migrate`, never from the app.
+    database = Database(settings.db_url)
+    app.state.database = database
+    app.state.template_repository = SqliteTemplateRepository(database)
     add_problem_handlers(app)
     install_openapi(app)
     install_readiness(app)
     register_domain_errors(app, PARSING_ERRORS)
+    register_domain_errors(app, TEMPLATE_ERRORS)
     register_readiness_check(app, "model", lambda: _require_model(app))
     app.include_router(health_router)
     app.include_router(parsing_router)
+    app.include_router(templates_router)
 
     # Starlette makes the last middleware added the outermost one: request context, then CORS,
     # then the 500 answer, then the body cap, so a 500 or a 413 carries the request id and the

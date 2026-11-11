@@ -162,7 +162,7 @@ layers = [
     "formlens.__main__",
     "formlens.main",
     "formlens.migrations",
-    "formlens.health | formlens.middleware | formlens.openapi | formlens.logging_config | formlens.parsing",
+    "formlens.health | formlens.middleware | formlens.openapi | formlens.logging_config | formlens.parsing | formlens.templates",
     "formlens.pagination | formlens.database",
     "formlens.problems | formlens.config | formlens.query | formlens.types",
     "formlens.modelspec",
@@ -185,6 +185,7 @@ source_modules = [
     "formlens.parsing",
     "formlens.problems",
     "formlens.query",
+    "formlens.templates",
     "formlens.types",
 ]
 forbidden_modules = ["uvicorn"]
@@ -200,6 +201,8 @@ ignore_imports = [
     "formlens.database -> sqlalchemy",
     "formlens.migrations -> sqlalchemy",
     "formlens.migrations.versions.** -> sqlalchemy",
+    "formlens.templates.repository -> sqlalchemy",
+    "formlens.templates.tables -> sqlalchemy",
 ]
 
 [[tool.importlinter.contracts]]
@@ -235,6 +238,18 @@ layers = [
 ]
 
 [[tool.importlinter.contracts]]
+name = "Templates are layered: router, dependencies and schemas, service, storage, then models and exceptions"
+type = "layers"
+layers = [
+    "formlens.templates.router",
+    "formlens.templates.dependencies | formlens.templates.schemas | formlens.templates.errors",
+    "formlens.templates.service",
+    "formlens.templates.repository | formlens.templates.json_schema",
+    "formlens.templates.tables | formlens.templates.models",
+    "formlens.templates.exceptions",
+]
+
+[[tool.importlinter.contracts]]
 name = "Only the application factory imports the Docling adapter"
 type = "forbidden"
 # Listed one by one: a source that contains the forbidden module (`formlens` itself) makes the check
@@ -262,6 +277,7 @@ source_modules = [
     "formlens.parsing.slots",
     "formlens.problems",
     "formlens.query",
+    "formlens.templates",
     "formlens.types",
 ]
 forbidden_modules = ["formlens.parsing.docling_parser"]

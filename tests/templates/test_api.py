@@ -507,3 +507,9 @@ def test_a_range_limit_written_as_a_whole_number_is_still_accepted(client: TestC
     response = client.post(URL, json=template_body(fields=[field_body(name="a", type="number", minimum=0, maximum=10)]))
 
     assert response.status_code == 201
+
+
+def test_a_nul_character_in_a_name_is_a_422_invalid_template(client: TestClient) -> None:
+    response = client.post(URL, json=template_body(name="Order\u0000form"))
+
+    assert (response.status_code, response.json()["type"]) == (422, problem_type("invalid-template"))

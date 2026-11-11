@@ -490,3 +490,20 @@ def test_a_trailing_slash_on_a_templates_path_is_a_404_problem_not_a_redirect(cl
 
     assert response.status_code == 404
     assert response.headers["content-type"] == PROBLEM_MEDIA_TYPE
+
+
+@pytest.mark.parametrize("limit", ["minimum", "maximum"])
+@pytest.mark.parametrize("value", ["5", True, "1e3"], ids=["numeric-string", "boolean", "exponent-string"])
+def test_a_range_limit_is_a_json_number_and_nothing_that_merely_reads_like_one(
+    client: TestClient, limit: str, value: Any
+) -> None:
+    response = client.post(URL, json=template_body(fields=[field_body(name="a", type="number", **{limit: value})]))
+
+    assert response.status_code == 422
+    assert response.json()["type"] == problem_type("validation-error")
+
+
+def test_a_range_limit_written_as_a_whole_number_is_still_accepted(client: TestClient) -> None:
+    response = client.post(URL, json=template_body(fields=[field_body(name="a", type="number", minimum=0, maximum=10)]))
+
+    assert response.status_code == 201

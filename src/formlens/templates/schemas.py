@@ -56,6 +56,7 @@ class FieldSpec(BaseModel):
     )
     required: bool = Field(
         default=False,
+        strict=True,  # a JSON boolean: "yes", "true", 1 and 0 would be coerced in lax mode, and the spec says boolean
         description="Whether a completed form must have a value. A result with a missing required field is "
         "still delivered and lists the field under `missing_required`.",
     )
@@ -68,11 +69,13 @@ class FieldSpec(BaseModel):
     )
     minimum: float | None = Field(
         default=None,
+        strict=True,  # a JSON number, not "5" or true
         allow_inf_nan=False,
         description="Smallest value of a `number` or `integer` field.",
     )
     maximum: float | None = Field(
         default=None,
+        strict=True,  # a JSON number, not "5" or true
         allow_inf_nan=False,
         description="Largest value of a `number` or `integer` field.",
     )

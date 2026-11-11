@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from formlens.config import ModelSettings, Settings
+from formlens.config import LlmSettings, ModelSettings, Settings
 from formlens.modelspec import MODEL_SPECS, VlmBackend
 
 
@@ -110,7 +110,8 @@ def test_make_test_models_fails_with_a_hint_when_the_models_are_absent(tmp_path:
 @pytest.mark.slow
 def test_a_slow_test_sees_no_exported_setting_except_the_two_model_settings() -> None:
     """The canary of the next test: it runs only when a child run selects it."""
-    others = {name.upper() for name in Settings.model_fields} - {name.upper() for name in ModelSettings.model_fields}
+    kept = {*ModelSettings.model_fields, *LlmSettings.model_fields}
+    others = {name.upper() for name in Settings.model_fields} - {name.upper() for name in kept}
 
     assert {key for key in os.environ if key.upper() in others} == set()
 

@@ -12,9 +12,9 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
-from formlens.config import ModelSettings, Settings, get_settings
+from formlens.config import LlmSettings, ModelSettings, Settings, get_settings
 from formlens.main import create_app
-from tests.conftest import make_settings
+from tests.conftest import make_settings, slow_settings
 
 ENV_EXAMPLE = Path(__file__).resolve().parent.parent / ".env.example"
 
@@ -564,3 +564,55 @@ def test_an_address_written_in_a_shorthand_or_that_is_link_local_is_refused(url:
 )
 def test_a_private_address_in_its_standard_form_and_a_plain_name_are_still_accepted(url: str) -> None:
     assert make_settings(llm_base_url=url).llm_base_url == url
+
+
+# --- LlmSettings: the two settings the service, `make evaluate` and the slow tests share ------------
+
+
+def test_settings_are_llm_settings_with_the_same_two_fields_and_defaults() -> None:
+    llm = LlmSettings(_env_file=None)
+    settings = Settings(_env_file=None)
+
+    assert isinstance(settings, LlmSettings)
+    assert set(LlmSettings.model_fields) == {"llm_base_url", "llm_model"}
+    assert (llm.llm_base_url, llm.llm_model) == ("http://localhost:11434/v1", "qwen3:8b")
+    assert (settings.llm_base_url, settings.llm_model) == (llm.llm_base_url, llm.llm_model)
+
+
+def test_llm_settings_ignore_an_unrelated_bad_value_in_the_env_file(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("PORT=abc\nLLM_MODEL=other:1b\n", encoding="utf-8")
+
+    assert LlmSettings(_env_file=env_file).llm_model == "other:1b"
+    with pytest.raises(ValidationError, match="port"):
+        Settings(_env_file=env_file)
+
+
+def test_llm_settings_refuse_an_address_that_is_not_local() -> None:
+    with pytest.raises(ValidationError, match="llm_base_url"):
+        LlmSettings(_env_file=None, llm_base_url="http://8.8.8.8/v1")
+
+
+def test_the_slow_tests_read_the_language_model_from_the_env_file_like_make_evaluate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`make test-models` and `make evaluate` must use the model that `.env` names, not each their own."""
+    (tmp_path / ".env").write_text(
+        "LLM_MODEL=from-the-file:1b\nLLM_BASE_URL=http://ollama:11434/v1\n", encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)
+
+    settings = slow_settings()
+
+    assert (settings.llm_model, settings.llm_base_url) == ("from-the-file:1b", "http://ollama:11434/v1")
+    assert Settings().llm_model == settings.llm_model  # what the service and `make evaluate` read
+
+
+def test_the_environment_beats_the_env_file_for_the_llm_settings_of_the_slow_tests(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".env").write_text("LLM_MODEL=from-the-file:1b\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LLM_MODEL", "from-the-shell:2b")
+
+    assert slow_settings().llm_model == "from-the-shell:2b"

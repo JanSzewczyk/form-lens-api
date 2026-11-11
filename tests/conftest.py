@@ -10,15 +10,12 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from formlens.config import ModelSettings, Settings
+from formlens.config import LlmSettings, ModelSettings, Settings
 from formlens.main import create_app
 from formlens.migrations import upgrade_to_head
 from tests.extractions.fakes import FakeExtractor
 from tests.fakes import FakeParser
 from tests.probes import add_probe_routes
-
-#: The settings a `slow` test takes from the outside: the model files and the language model it talks to.
-LLM_SETTINGS = ("llm_base_url", "llm_model")
 
 
 def make_settings(**overrides: Any) -> Settings:
@@ -31,12 +28,16 @@ def slow_settings() -> Settings:
     """Settings for a test with the real models: only the model settings come from outside.
 
     `MODELS_PATH` and `VLM_BACKEND` are read like the service and `make download-models` read them (the
-    environment, then `.env`), through `ModelSettings`, which ignores the rest of `.env`. `LLM_BASE_URL`
-    and `LLM_MODEL` are taken from the environment when it sets them. Everything else is the test default.
+    environment, then `.env`), through `ModelSettings`; `LLM_BASE_URL` and `LLM_MODEL` the same way through
+    `LlmSettings`, as `make evaluate` reads them. Both ignore the rest of `.env`. Everything else is the test default.
     """
-    models = ModelSettings()
-    llm = {name: os.environ[name.upper()] for name in LLM_SETTINGS if name.upper() in os.environ}
-    return make_settings(models_path=models.models_path, vlm_backend=models.vlm_backend, **llm)
+    models, llm = ModelSettings(), LlmSettings()
+    return make_settings(
+        models_path=models.models_path,
+        vlm_backend=models.vlm_backend,
+        llm_base_url=llm.llm_base_url,
+        llm_model=llm.llm_model,
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -49,7 +50,7 @@ def _isolate_from_exported_settings(request: pytest.FixtureRequest, monkeypatch:
     """
     names = {name.upper() for name in Settings.model_fields}
     if request.node.get_closest_marker("slow") is not None:
-        names -= {name.upper() for name in (*ModelSettings.model_fields, *LLM_SETTINGS)}
+        names -= {name.upper() for name in (*ModelSettings.model_fields, *LlmSettings.model_fields)}
     for key in list(os.environ):  # settings names are case-insensitive
         if key.upper() in names:
             monkeypatch.delenv(key)

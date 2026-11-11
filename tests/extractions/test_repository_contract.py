@@ -333,3 +333,10 @@ def test_a_job_finishing_exactly_at_the_cutoff_is_kept(repository: ExtractionRep
     repository.finish_if_running(taken.complete({}, NOW + timedelta(hours=1)))
 
     assert repository.purge_before(NOW + timedelta(hours=1)) == 0
+
+
+def test_an_upload_of_any_bytes_is_stored_and_read_back_exactly(repository: ExtractionRepository) -> None:
+    content = bytes(range(256)) * 100
+    add(repository, ExtractionFactory.build(id=id_of(1)), content)
+
+    assert repository.read_input(id_of(1)) == content

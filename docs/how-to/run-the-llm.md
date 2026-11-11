@@ -20,9 +20,9 @@ ollama pull qwen3:8b
 ollama list               # shows the pulled models; a digest is listed here (unverified, see below)
 ```
 
-The digest of the pulled model is to be recorded in [licenses](../licenses.md) with the date. `ollama list` shows an
-identifier for each model, which I believe is the digest; **I could not check that**, because Ollama was not
-available when this was written, so look at the output and at Ollama's documentation before you write it down.
+The digest of the pulled model is to be recorded in [licenses](../licenses.md) with the date. `ollama list` is expected to show an
+identifier for each model, which is expected to be the digest. **Not verified: Ollama was not available when this
+was written**, so the output and Ollama's documentation have to be checked before it is written down.
 
 `LLM_MODEL` (default `qwen3:8b`) names the model; `LLM_BASE_URL` (default `http://localhost:11434/v1`) the
 endpoint. Anything else is a setting change, not a code change.

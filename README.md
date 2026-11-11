@@ -394,7 +394,7 @@ An **extraction** is the flow `POST /v1/extractions` (202, `Location`) then `GET
 A `null` in a required field is **not** a failure: the result is delivered and `missing_required` lists the field.
 The extraction keeps a copy of the template (`template_version`) from the moment it was submitted, so a later edit
 or delete changes nothing. A finished extraction is kept for `RESULT_TTL_HOURS`, then it is a 404
-`extraction-not-found`. `POST /v1/extractions` answers 400 (an empty file only: a file with a valid signature that cannot be read is queued, and the extraction ends `failed` with the reason `invalid_file`), 404 (`template-not-found`), 413, 415, 422
+`extraction-not-found`. The template routes refuse a JSON body over `MAX_JSON_BODY_KB` with 413 `body-too-large`, before they read it. `POST /v1/extractions` answers 400 (an empty file only: a file with a valid signature that cannot be read is queued, and the extraction ends `failed` with the reason `invalid_file`), 404 (`template-not-found`), 413, 415, 422
 and 503 `queue-full` with `Retry-After`; the document and the values never appear in a log line.
 
 Parsing answers with these errors (all Problem Details, see
@@ -543,6 +543,7 @@ The service reads all settings from the environment or `.env` (see `.env.example
 | `MODELS_PATH` | `./models` | Folder with the downloaded models; a relative path is read from the working directory; an empty value is refused |
 | `VLM_BACKEND` | `mlx` | `mlx` (the backend this project uses on Apple Silicon) or `transformers` |
 | `MAX_UPLOAD_MB` | `25` | Largest accepted upload, in megabytes (1 or more) |
+| `MAX_JSON_BODY_KB` | `256` | Largest accepted JSON body of `POST /v1/templates` and `PUT /v1/templates/{id}`, in kilobytes (1 or more); a larger one is a 413 `body-too-large`, answered before the body is read |
 | `MAX_CONCURRENCY` | `1` | Documents converted at the same time (1 or more) |
 | `PARSE_TIMEOUT_SECONDS` | `300` | Seconds one document may take to parse (1 or more) |
 | `DB_URL` | `sqlite:///./formlens.db` | SQLite database (only `sqlite:` URLs); tables come from `make migrate` |

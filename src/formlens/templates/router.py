@@ -1,12 +1,13 @@
 """The templates endpoints."""
 
+import re
 from typing import Annotated, Final
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Path, Response
 
 from formlens.pagination import PageParams, get_page_params
-from formlens.problems import VALIDATION_ERROR, malformed_body_response, problem_response
+from formlens.problems import BODY_TOO_LARGE, VALIDATION_ERROR, malformed_body_response, problem_response
 from formlens.templates.dependencies import get_template_service
 from formlens.templates.errors import INVALID_TEMPLATE, TEMPLATE_NOT_FOUND
 from formlens.templates.schemas import TemplateCreate, TemplatePage, TemplateReplace, TemplateResponse
@@ -19,6 +20,16 @@ TEMPLATES_TAG: Final = {
 
 router = APIRouter(prefix="/v1/templates", tags=["templates"])
 
+_TEMPLATE_PATH: Final = re.compile(r"/v1/templates/[^/]+")
+
+
+def is_template_write(method: str, path: str) -> bool:
+    """Tell whether a request is `POST /v1/templates` or `PUT /v1/templates/{id}`: the ones with a JSON body."""
+    return (method == "POST" and path == "/v1/templates") or (
+        method == "PUT" and _TEMPLATE_PATH.fullmatch(path) is not None
+    )
+
+
 _TemplateId = Annotated[UUID, Path(description="Identifier of the template.")]
 _Service = Annotated[TemplateService, Depends(get_template_service)]
 
@@ -30,6 +41,7 @@ _Service = Annotated[TemplateService, Depends(get_template_service)]
     response_model=TemplateResponse,
     responses={
         400: malformed_body_response(),
+        413: problem_response(BODY_TOO_LARGE),
         422: problem_response(
             VALIDATION_ERROR,
             INVALID_TEMPLATE,
@@ -86,6 +98,7 @@ def get_template(template_id: _TemplateId, service: _Service) -> TemplateRespons
     responses={
         400: malformed_body_response(),
         404: problem_response(TEMPLATE_NOT_FOUND),
+        413: problem_response(BODY_TOO_LARGE),
         422: problem_response(
             VALIDATION_ERROR,
             INVALID_TEMPLATE,

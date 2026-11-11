@@ -8,13 +8,15 @@ from typing import Any
 import pytest
 from starlette.types import Message, Receive, Scope, Send
 
-from formlens.parsing.body_limit import SLACK_BYTES, BodyLimitMiddleware
+from formlens.parsing.body_limit import SLACK_BYTES, BodyLimitMiddleware, JsonRule
 from formlens.parsing.models import BYTES_PER_MB
 
 PATH = "/v1/documents/parse"
 OTHER_UPLOAD_PATH = "/v1/extractions"
 PATHS = frozenset({PATH, OTHER_UPLOAD_PATH})
 CAP = BYTES_PER_MB + SLACK_BYTES
+JSON_KB = 2
+JSON_CAP = JSON_KB * 1024
 
 type App = Callable[[Scope, Receive, Send], Awaitable[None]]
 
@@ -43,10 +45,11 @@ def drive(
     method: str = "POST",
     path: str = PATH,
     headers: list[tuple[bytes, bytes]] | None = None,
+    json_rule: JsonRule | None = None,
 ) -> Run:
     run = Run()
     pending = list(chunks)
-    middleware = BodyLimitMiddleware(app, paths=PATHS, max_upload_mb=1)
+    middleware = BodyLimitMiddleware(app, paths=PATHS, max_upload_mb=1, json_rule=json_rule, max_json_kb=JSON_KB)
 
     async def receive() -> Message:
         if not pending:
@@ -255,3 +258,103 @@ def test_a_content_length_that_only_looks_like_a_number_is_left_to_the_server(le
     run = drive(read_everything_and_answer_200, [b"x"], headers=[(b"content-length", length)])
 
     assert run.status == 200
+
+
+# --- the cap on a JSON body ------------------------------------------------------------------------
+
+
+def is_template_write(method: str, path: str) -> bool:
+    return (method == "POST" and path == "/v1/templates") or (method == "PUT" and path.startswith("/v1/templates/"))
+
+
+def test_a_json_body_with_a_declared_length_over_its_cap_is_refused_before_a_byte_is_read() -> None:
+    run = drive(
+        read_everything_and_answer_200,
+        [b"x"],
+        path="/v1/templates",
+        headers=[(b"content-length", str(JSON_CAP + 1).encode())],
+        json_rule=is_template_write,
+    )
+
+    assert run.status == 413
+    assert run.pulled == 0
+    assert run.body["type"] == "urn:problem:formlens:body-too-large"
+    assert run.body["detail"] == "The request body is larger than the 2 KB limit."
+    assert run.body["request_id"] == "r-1"
+
+
+def test_a_json_body_of_exactly_its_cap_goes_through() -> None:
+    run = drive(
+        read_everything_and_answer_200,
+        [b"x"],
+        path="/v1/templates",
+        headers=[(b"content-length", str(JSON_CAP).encode())],
+        json_rule=is_template_write,
+    )
+
+    assert run.status == 200
+
+
+def test_a_json_body_without_a_length_is_cut_when_the_count_passes_its_cap_and_the_rest_is_never_pulled() -> None:
+    run = drive(
+        read_everything_and_answer_200,
+        [bytes(JSON_CAP), b"x", b"y"],
+        method="PUT",
+        path="/v1/templates/0192f5e0-5a3b-7c11-9d2e-3f6a1b2c4d5e",
+        json_rule=is_template_write,
+    )
+
+    assert run.status == 413
+    assert run.pulled == 2
+    assert run.body["type"] == "urn:problem:formlens:body-too-large"
+
+
+def test_a_chunked_json_body_of_exactly_its_cap_goes_through() -> None:
+    run = drive(
+        read_everything_and_answer_200,
+        [bytes(JSON_CAP // 2), bytes(JSON_CAP // 2)],
+        path="/v1/templates",
+        json_rule=is_template_write,
+    )
+
+    assert run.status == 200
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "/v1/templates"),
+        ("POST", "/v1/templates/some-id"),
+        ("DELETE", "/v1/templates/some-id"),
+        ("POST", "/health"),
+    ],
+)
+def test_a_request_the_rule_does_not_name_is_not_capped_at_the_json_limit(method: str, path: str) -> None:
+    run = drive(
+        read_everything_and_answer_200,
+        [bytes(10 * JSON_CAP)],
+        method=method,
+        path=path,
+        headers=[(b"content-length", str(10 * JSON_CAP).encode())],
+        json_rule=is_template_write,
+    )
+
+    assert run.status == 200
+
+
+def test_without_a_json_rule_a_template_path_is_not_capped() -> None:
+    run = drive(read_everything_and_answer_200, [bytes(10 * JSON_CAP)], path="/v1/templates")
+
+    assert run.status == 200
+
+
+def test_an_upload_path_keeps_its_own_limit_and_its_own_problem_type_when_a_json_rule_is_set() -> None:
+    run = drive(
+        read_everything_and_answer_200,
+        [b"x"],
+        headers=[(b"content-length", str(CAP + 1).encode())],
+        json_rule=lambda _method, _path: True,  # even a rule that names every path does not touch the upload cap
+    )
+
+    assert run.status == 413
+    assert run.body["type"] == "urn:problem:formlens:file-too-large"

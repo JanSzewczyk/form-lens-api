@@ -150,6 +150,7 @@ NON_DEFAULT_ENVIRONMENT = {
     "MODELS_PATH": "/from/the/shell",
     "VLM_BACKEND": "transformers",
     "MAX_UPLOAD_MB": "5",
+    "MAX_JSON_BODY_KB": "64",
     "MAX_CONCURRENCY": "3",
     "PARSE_TIMEOUT_SECONDS": "7",
     "DB_URL": "sqlite:////from/the/shell.db",
@@ -616,3 +617,9 @@ def test_the_environment_beats_the_env_file_for_the_llm_settings_of_the_slow_tes
     monkeypatch.setenv("LLM_MODEL", "from-the-shell:2b")
 
     assert slow_settings().llm_model == "from-the-shell:2b"
+
+
+def test_the_json_body_limit_defaults_to_256_kb_and_must_be_at_least_one() -> None:
+    assert Settings(_env_file=None).max_json_body_kb == 256
+    with pytest.raises(ValidationError, match="max_json_body_kb"):
+        make_settings(max_json_body_kb=0)

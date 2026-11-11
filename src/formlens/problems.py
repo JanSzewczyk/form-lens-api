@@ -41,6 +41,15 @@ class ProblemType:
 
 
 VALIDATION_ERROR: Final = ProblemType("validation-error", "Request validation failed", 422)
+BODY_TOO_LARGE: Final = ProblemType("body-too-large", "Request body too large", 413)
+
+
+class BodyTooLarge(Exception):
+    """A JSON request body is larger than `MAX_JSON_BODY_KB`. It carries fixed text and knows nothing of HTTP."""
+
+    def __init__(self, max_kb: int) -> None:
+        """Name the limit, which comes from the settings and not from the client."""
+        super().__init__(f"The request body is larger than the {max_kb} KB limit.")
 
 
 class ValidationIssue(BaseModel):
@@ -284,4 +293,4 @@ def add_problem_handlers(app: FastAPI) -> None:
     app.add_exception_handler(StarletteHTTPException, _http_exception_handler)
     app.add_exception_handler(RequestValidationError, _validation_exception_handler)
     app.add_exception_handler(Exception, _backstop_exception_handler)
-    register_problem_types(app, VALIDATION_ERROR)
+    register_problem_types(app, VALIDATION_ERROR, BODY_TOO_LARGE)

@@ -190,6 +190,14 @@ class Settings(ModelSettings, LlmSettings):
     )
 
     max_upload_mb: int = Field(default=25, ge=1, description="Largest accepted upload, in megabytes.")
+    max_json_body_kb: int = Field(
+        default=256,
+        ge=1,
+        description=(
+            "Largest accepted JSON request body of the template routes, in kilobytes; a larger one is refused with "
+            "413 `body-too-large` before it is read."
+        ),
+    )
     max_concurrency: int = Field(
         default=1, ge=1, description="Documents converted at the same time; the model is heavy, so keep it low."
     )

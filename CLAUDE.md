@@ -7,6 +7,13 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
 - `make check` is the gate: Ruff format check, Ruff lint, mypy, import contracts, tests with
   coverage, OpenAPI drift. Run it before every commit.
 - `make run` starts the service (`python -m formlens`). Tests use `uv run pytest`.
+- `make migrate` creates or updates the SQLite database of `DB_URL` (`python -m formlens migrate`). The service
+  refuses to start on a database that is not at head; it never creates tables. A change to a table is a change
+  to `src/formlens/migrations/versions/v0001_initial.py` (Stage 2 is unreleased, so 0001 grows in place); the
+  migration test compares the migrated schema with the models.
+- `make evaluate` runs the golden set (`tests/golden/`) against the real document model and Ollama; it stops
+  with a message when either is missing. Never invent its numbers: the README's Accuracy section says "not
+  measured yet" until someone has run it.
 - `make openapi` regenerates `openapi.json`. It is generated from the app; never edit it by hand.
   Commit it with any change that alters the API.
 - `make api-check` runs Spectral, oasdiff and Schemathesis (needs Node, Docker or oasdiff).
@@ -16,7 +23,7 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
   the working directory, then the defaults. It runs `uv run --no-sync`, so `make install` comes
   first: `make download-models VLM_BACKEND=transformers MODELS_PATH=/data/models`.
 - `make test-models` runs the tests marked `slow` and fails, not skips, when the pinned model files
-  are missing. The default `addopts` is `-m "not slow"`, so `make check` and `uv run pytest`
+  are missing or Ollama does not answer. The default `addopts` is `-m "not slow"`, so `make check` and `uv run pytest`
   deselect them.
 - Add dependencies with `uv add` (runtime) or `uv add --group test|dev|api`, and commit `uv.lock`.
 - `make audit` runs pip-audit on every locked dependency group.
@@ -32,6 +39,17 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
   module that imports Docling, inside `build_docling_parser`, and only `main.py` imports it; the rest
   works against the `DocumentParser` port, with `tests/fakes.py: FakeParser`. Import contracts enforce
   both. `tests/schemathesis_app.py` is the app `make schemathesis` fuzzes (fake parser).
+- `database.py` (the SQLite engine: WAL, `BEGIN IMMEDIATE` for writes, `UtcDateTime`), `patterns.py` (client
+  regular expressions in a linear-time engine: lookaround and backreferences are refused) and `migrations/`
+  (Alembic inside the package, no `alembic.ini`, never `fileConfig`).
+- `templates/`: default shape (`/v1/templates`). Invariants raise `InvalidTemplate` when an object is built;
+  `json_schema.py` generates the schema; `repository.py` is the only SQL besides `extractions/adapters/`.
+- `extractions/`: hexagonal. `domain/` (stdlib only: `Extraction` transitions, ports, errors), `service_layer/`
+  (`ExtractionService`, `ExtractionProcessor.run_once`), `adapters/` (SQLite repository, Ollama extractor, Docling
+  text, template catalog, `ThreadDeadline`), `entrypoints/` (routes, worker). Import contracts keep the domain and
+  service layer free of frameworks and adapters, `httpx2` and `jsonschema` in `ollama_extractor.py`, SQLAlchemy in
+  `database`, `migrations`, `templates.repository|tables` and `extractions.adapters`. Fakes and factories are in
+  `tests/extractions/`; the Schemathesis app uses a fake extractor with the worker off.
 - Add structure to a module only when it hurts (see `docs/explanation/architecture.md`).
   New modules start like `docs/how-to/add-a-module.md` says.
 
@@ -49,10 +67,13 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
   test fails, running the mutant from a copy and printing the package `__file__` first.
 - Tests build settings with `Settings(_env_file=None)` (see `tests/conftest.py: make_settings`) and
   replace dependencies with `app.dependency_overrides` (cleared afterwards by the `app` fixture).
-  There is no factories module yet: set every value the test asserts on inline.
+  Build data with the factories (`tests/templates/factories.py`, `tests/extractions/factories.py`) and set every
+  value the test asserts on.
 - The autouse fixture `_isolate_from_exported_settings` (`tests/conftest.py`) deletes every setting
   from the environment for each test, so an exported `DOCS_ENABLED` cannot leak in. Tests marked
-  `slow` are exempt: they read `MODELS_PATH` and `VLM_BACKEND` from the environment and `.env`.
+  `slow` are exempt: they read `MODELS_PATH`, `VLM_BACKEND`, `LLM_BASE_URL` and `LLM_MODEL` from the environment
+  and `.env`. Every test that starts the app gets a private migrated database through the `db_url` fixture and
+  `start_worker=False` with a fake extractor; none may touch `./formlens.db`.
 - Tests of the core use `/health` and the probe routes of `tests/probes.py` (fixture
   `probe_app`).
 - Logging: structlog, constant event names, snake_case fields, no f-strings, no `print`. Log a
@@ -63,6 +84,12 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
 - Commit messages follow Conventional Commits: `type(scope): imperative summary`.
 
 ## Gotchas
+
+- A client `pattern` must stay in `patterns.py`: Python's `re` takes exponential time on `(a+)+$`, and a thread
+  stuck in it cannot be stopped, so one template could stop the queue for good.
+- A single-transaction read-then-write under `BEGIN IMMEDIATE` is also correct on SQLite, so only a mutant that
+  splits the read and the write goes red; do not claim the conditional `UPDATE` alone is proven.
+- The Ollama request fields were never checked against a real Ollama; `docs/how-to/run-the-llm.md` says so.
 
 - The uv version is pinned three times: the `uv` image in `Dockerfile` and `UV_VERSION` in
   `.github/workflows/ci.yml` and `release.yml` (`tests/test_tooling.py` checks they match). Dependabot does not

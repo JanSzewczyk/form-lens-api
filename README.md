@@ -394,7 +394,7 @@ An **extraction** is the flow `POST /v1/extractions` (202, `Location`) then `GET
 A `null` in a required field is **not** a failure: the result is delivered and `missing_required` lists the field.
 The extraction keeps a copy of the template (`template_version`) from the moment it was submitted, so a later edit
 or delete changes nothing. A finished extraction is kept for `RESULT_TTL_HOURS`, then it is a 404
-`extraction-not-found`. `POST /v1/extractions` answers 400 (empty file), 404 (`template-not-found`), 413, 415, 422
+`extraction-not-found`. `POST /v1/extractions` answers 400 (an empty file only: a file with a valid signature that cannot be read is queued, and the extraction ends `failed` with the reason `invalid_file`), 404 (`template-not-found`), 413, 415, 422
 and 503 `queue-full` with `Retry-After`; the document and the values never appear in a log line.
 
 Parsing answers with these errors (all Problem Details, see

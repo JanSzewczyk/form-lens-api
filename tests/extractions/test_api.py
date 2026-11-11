@@ -18,6 +18,7 @@ from formlens.extractions.domain.model import Extraction, ExtractionStatus
 from formlens.extractions.service_layer.processor import ExtractionProcessor
 from formlens.logging_config import configure_logging
 from formlens.main import create_app
+from formlens.parsing.exceptions import InvalidFile
 from formlens.problems import PROBLEM_MEDIA_TYPE
 from tests.conftest import make_settings
 from tests.documents import png_of_size, sample
@@ -611,3 +612,28 @@ def test_a_template_id_sent_twice_queues_nothing_and_names_the_field(app: FastAP
         {"loc": ["body", "template_id"], "msg": "Send the template_id once.", "type": "repeated_parameter"}
     ]
     assert app.state.extraction_repository.count_pending() == 0
+
+
+def test_a_corrupt_file_with_a_valid_signature_is_queued_and_the_extraction_fails_as_invalid_file(
+    db_url: str,
+) -> None:
+    """What problem-types.md says: this endpoint answers 400 `invalid-file` for an empty file only."""
+    app = create_app(
+        make_settings(db_url=db_url),
+        parser_factory=lambda _: FakeParser(error=InvalidFile()),  # the model cannot open the file
+        extractor_factory=lambda _: FakeExtractor(),
+        start_worker=False,
+    )
+    try:
+        with TestClient(app) as client:
+            template = make_template(client)
+            queued = submit(client, template["id"], b"%PDF-1.7 corrupt")
+
+            processor(app).run_once()
+
+            failed = client.get(queued.headers["Location"]).json()
+    finally:
+        app.state.database.dispose()
+
+    assert queued.status_code == 202
+    assert (failed["status"], failed["error"]["reason"], failed["attempts"]) == ("failed", "invalid_file", 1)

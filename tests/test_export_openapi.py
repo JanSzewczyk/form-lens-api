@@ -19,7 +19,7 @@ def test_export_writes_the_document_and_check_accepts_it(tmp_path: Path) -> None
 
     assert export_openapi.main([str(target)]) == 0
     assert export_openapi.main(["--check", str(target)]) == 0
-    assert json.loads(target.read_text(encoding="utf-8"))["info"]["title"] == "fastapi-szumplate"
+    assert json.loads(target.read_text(encoding="utf-8"))["info"]["title"] == "formlens"
 
 
 def test_check_fails_for_a_stale_or_missing_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -39,5 +39,5 @@ def test_the_document_ignores_environment_variables(monkeypatch: pytest.MonkeyPa
     monkeypatch.setenv("APP_NAME", "orders")
     monkeypatch.setenv("DOCS_ENABLED", "true")
 
-    assert json.loads(export_openapi.render())["info"]["title"] == "fastapi-szumplate"
+    assert json.loads(export_openapi.render())["info"]["title"] == "formlens"
     assert export_openapi.main(["--check"]) == 0

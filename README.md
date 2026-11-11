@@ -1,14 +1,13 @@
 <div align="center">
 
-# 🐍 fastapi-szumplate
+# 🐍 formlens
 
-[![CI](https://img.shields.io/github/actions/workflow/status/JanSzewczyk/fastapi-szumplate/ci.yml?branch=main&logo=githubactions&logoColor=white&label=CI)](https://github.com/JanSzewczyk/fastapi-szumplate/actions/workflows/ci.yml)
-[![Python](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/fastapi-szumplate/main/.python-version&search=(%5Cd%2B%5C.%5Cd%2B)&replace=%241&label=Python&logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/fastapi-szumplate/main/uv.lock&search=name%20%3D%20%22fastapi%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=FastAPI&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Use this template](https://img.shields.io/badge/Use%20this%20template-2ea44f?logo=github&logoColor=white)](https://github.com/JanSzewczyk/fastapi-szumplate/generate) <!-- only:template -->
+[![CI](https://img.shields.io/github/actions/workflow/status/JanSzewczyk/form-lens-api/ci.yml?branch=main&logo=githubactions&logoColor=white&label=CI)](https://github.com/JanSzewczyk/form-lens-api/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/.python-version&search=(%5Cd%2B%5C.%5Cd%2B)&replace=%241&label=Python&logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22fastapi%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=FastAPI&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
 
-**FastAPI service with typed settings, structured logs, Problem Details and a checked OpenAPI contract**
+**FastAPI service that extracts structured data from forms with a document model that runs locally**
 
 [Features](#-features) • [Run it](#run-it) • [API](#-api) • [Configuration](#-configuration) • [Deployment](#-deployment)
 
@@ -18,23 +17,21 @@
 
 ## 👋 Hello there!
 
-A FastAPI service by Szum-Tech with the parts every API needs already wired and tested: typed
-settings, structured logging, one error format (Problem Details), a generated and checked OpenAPI
-contract, Docker and CI. It runs on Python 3.15 with uv, Ruff, mypy (strict) and pytest, so work
-starts from a green `make check` instead of an empty folder.
-Use it as a GitHub template: one script renames your copy and, if you want, drops the example. <!-- only:template -->
-
-<!-- begin:example -->
-It ships an example domain (a small library) that you can delete.
-<!-- end:example -->
+FormLens API by Szum-Tech turns forms into structured data with IBM's Granite-Docling model,
+which runs on your machine through [Docling](https://github.com/docling-project/docling); no
+document leaves it. **Stage 0 is the working but empty skeleton**: typed settings (including the
+model settings), structured logging, one error format (Problem Details), a generated and checked
+OpenAPI contract, a pinned model download, Docker and CI. There is no parsing endpoint yet; it
+arrives in Stage 1. It runs on Python 3.15 with uv, Ruff, mypy (strict) and pytest.
 
 ### ⚡ Quick Start
 
 ```bash
-git clone https://github.com/JanSzewczyk/fastapi-szumplate.git
-cd fastapi-szumplate
+git clone https://github.com/JanSzewczyk/form-lens-api.git
+cd form-lens-api
 cp .env.example .env
 make install
+make download-models   # about 0.6 GB, once; not needed to start the service in Stage 0
 make run
 ```
 
@@ -52,26 +49,26 @@ The API listens on http://127.0.0.1:8000; `curl http://127.0.0.1:8000/health` an
 - **📑 Pagination** — a `Page[T]` envelope with `limit` and `offset` parameters
 - **🔁 Strict requests** — a single-value query parameter sent twice is a 422, not a silent pick; a trailing slash is a 404, not a redirect
 - **🛑 Graceful shutdown** — open requests get `GRACEFUL_SHUTDOWN_SECONDS` after SIGTERM, and responses carry no `Server` header
-- **📚 Removable example domain** — books and loans with five rules that answer 409, each proven atomic by a parallel test <!-- only:example -->
-- **🧩 Setup script** — `scripts/init_project.py` renames a copy and optionally drops the example <!-- only:template -->
 
 ### 🧱 Tech Stack
 
-- [![FastAPI](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/fastapi-szumplate/main/uv.lock&search=name%20%3D%20%22fastapi%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=FastAPI&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/) — routing, validation and the OpenAPI document
-- [![Pydantic](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/fastapi-szumplate/main/uv.lock&search=name%20%3D%20%22pydantic%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Pydantic&logo=pydantic&logoColor=white)](https://docs.pydantic.dev/) — request, response and problem models
-- [![Pydantic Settings](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/fastapi-szumplate/main/uv.lock&search=name%20%3D%20%22pydantic-settings%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Pydantic%20Settings&logo=pydantic&logoColor=white)](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) — typed configuration from the environment and `.env`
-- [![structlog](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/fastapi-szumplate/main/uv.lock&search=name%20%3D%20%22structlog%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=structlog)](https://www.structlog.org/) — structured logging on top of the stdlib `logging`
-- [![Uvicorn](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/fastapi-szumplate/main/uv.lock&search=name%20%3D%20%22uvicorn%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Uvicorn)](https://www.uvicorn.org/) — the ASGI server, started by `python -m fastapi_szumplate`
+- [![FastAPI](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22fastapi%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=FastAPI&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/) — routing, validation and the OpenAPI document
+- [![Pydantic](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22pydantic%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Pydantic&logo=pydantic&logoColor=white)](https://docs.pydantic.dev/) — request, response and problem models
+- [![Pydantic Settings](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22pydantic-settings%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Pydantic%20Settings&logo=pydantic&logoColor=white)](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) — typed configuration from the environment and `.env`
+- [![structlog](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22structlog%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=structlog)](https://www.structlog.org/) — structured logging on top of the stdlib `logging`
+- [![Uvicorn](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22uvicorn%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Uvicorn)](https://www.uvicorn.org/) — the ASGI server, started by `python -m formlens`
+
+- **Docling with Granite-Docling** — the document model; planned for Stage 1 and **not a dependency yet**. Its licences are in [docs/licenses.md](docs/licenses.md)
 
 ### 🧪 Quality Gates
 
-- [![Ruff](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/fastapi-szumplate/main/uv.lock&search=name%20%3D%20%22ruff%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Ruff&logo=ruff&logoColor=white)](https://docs.astral.sh/ruff/) — format and lint, with security, async, logging and docstring rules
-- [![mypy](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/fastapi-szumplate/main/uv.lock&search=name%20%3D%20%22mypy%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=mypy)](https://mypy.readthedocs.io/) — `strict = true` with the Pydantic plugin and extra error codes, over `src`, `tests` and `scripts`
-- [![import-linter](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/fastapi-szumplate/main/uv.lock&search=name%20%3D%20%22import-linter%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=import-linter)](https://import-linter.readthedocs.io/) — contracts: the core is layered, only the entry point imports uvicorn, the core never imports the example
-- [![pytest](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/fastapi-szumplate/main/uv.lock&search=name%20%3D%20%22pytest%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=pytest&logo=pytest&logoColor=white)](https://docs.pytest.org/) — strict mode, warnings are errors, random order, 60 s timeout per test
-- [![coverage](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/fastapi-szumplate/main/uv.lock&search=name%20%3D%20%22coverage%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=coverage)](https://coverage.readthedocs.io/) — branch coverage of `src` and `scripts`, at least 95%
-- [![Hypothesis](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/fastapi-szumplate/main/uv.lock&search=name%20%3D%20%22hypothesis%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Hypothesis)](https://hypothesis.readthedocs.io/) — property-based tests
-- [![Schemathesis](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/fastapi-szumplate/main/uv.lock&search=name%20%3D%20%22schemathesis%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Schemathesis)](https://schemathesis.readthedocs.io/) — every check and phase against a running server
+- [![Ruff](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22ruff%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Ruff&logo=ruff&logoColor=white)](https://docs.astral.sh/ruff/) — format and lint, with security, async, logging and docstring rules
+- [![mypy](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22mypy%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=mypy)](https://mypy.readthedocs.io/) — `strict = true` with the Pydantic plugin and extra error codes, over `src`, `tests` and `scripts`
+- [![import-linter](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22import-linter%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=import-linter)](https://import-linter.readthedocs.io/) — contracts: the core is layered and only the entry point imports uvicorn
+- [![pytest](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22pytest%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=pytest&logo=pytest&logoColor=white)](https://docs.pytest.org/) — strict mode, warnings are errors, random order, 60 s timeout per test
+- [![coverage](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22coverage%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=coverage)](https://coverage.readthedocs.io/) — branch coverage of `src` and `scripts`, at least 95%
+- [![Hypothesis](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22hypothesis%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Hypothesis)](https://hypothesis.readthedocs.io/) — property-based tests
+- [![Schemathesis](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22schemathesis%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Schemathesis)](https://schemathesis.readthedocs.io/) — every check and phase against a running server
 
 ### 🤖 Automation & DevOps
 
@@ -89,7 +86,6 @@ The API listens on http://127.0.0.1:8000; `curl http://127.0.0.1:8000/health` an
 - **`python -m`, not the `uvicorn` command** — the module configures logging before uvicorn starts (see [Run it](#run-it))
 - **One worker, one replica** — anything kept in memory is per process (see [Deployment](#-deployment))
 - **No authentication** — out of scope; put it in a dependency on the routers you want to protect, and publish the security scheme in the OpenAPI document
-- **No database** — the example keeps its data in memory behind a repository port; [swap-in-a-database.md](docs/how-to/swap-in-a-database.md) replaces it <!-- only:example -->
 - **Structure when it hurts** — a module starts with the default shape and grows only when its rules demand it ([architecture.md](docs/explanation/architecture.md))
 
 ---
@@ -98,7 +94,6 @@ The API listens on http://127.0.0.1:8000; `curl http://127.0.0.1:8000/health` an
 
 - [✨ Features](#-features)
 - [🎯 Run it](#run-it)
-- [🧩 Use it](#use-it) <!-- only:template -->
 - [📃 Commands](#-commands)
 - [📡 API](#-api)
 - [🧱 Architecture](#-architecture)
@@ -122,6 +117,7 @@ The API listens on http://127.0.0.1:8000; `curl http://127.0.0.1:8000/health` an
 ### 📋 Prerequisites
 
 - **[Python](https://www.python.org/downloads/)** 3.15 — uv installs it for you when it is missing
+- **macOS 14 or newer on Apple Silicon** for the default `VLM_BACKEND=mlx`, the backend this project uses on Apple Silicon (macOS 14 is the minimum for the macOS `mlx` wheels). This project has run it only there. On other systems set `VLM_BACKEND=transformers`; that backend has been neither downloaded nor run so far
 - **[uv](https://docs.astral.sh/uv/)** 0.13.7 or newer, for dependencies and virtual environments
 - **GNU Make** to run the commands below
 - **Git** for version control
@@ -133,8 +129,8 @@ The API listens on http://127.0.0.1:8000; `curl http://127.0.0.1:8000/health` an
 #### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/JanSzewczyk/fastapi-szumplate.git
-cd fastapi-szumplate
+git clone https://github.com/JanSzewczyk/form-lens-api.git
+cd form-lens-api
 ```
 
 #### 2. Install Dependencies
@@ -151,24 +147,57 @@ This creates `.venv/` and installs the exact versions from `uv.lock` (`uv sync -
 cp .env.example .env
 ```
 
-#### 4. Start the Service
+#### 4. Download the Model
+
+```bash
+make download-models
+```
+
+This fetches the model pinned for `VLM_BACKEND` (about 0.6 GB for `mlx`) into `MODELS_PATH`
+(`models/` by default, git-ignored) as `models/ibm-granite--granite-docling-258M-mlx/`. It needs
+network access and uv, and does nothing when the pinned revision is already there. A relative
+`MODELS_PATH` is read from the working directory, as the service reads it (`make` runs from the
+repository root). `make test-models` then checks that the files are in place. An empty
+`MODELS_PATH` or `VLM_BACKEND` is refused, by the script as by the service. Licences:
+[docs/licenses.md](docs/licenses.md).
+
+**The script reads only the process environment, never `.env`.** `make download-models` and
+`make test-models` see the variables you export and the ones you pass to `make`, not the ones in
+`.env`: a `.env` with `MODELS_PATH=/elsewhere` or `VLM_BACKEND=transformers` moves the service
+(`make run`) but not the download or the check. To point them elsewhere, export the variables or
+pass them on the command line, with the same values for all three commands:
+
+```bash
+make download-models VLM_BACKEND=transformers MODELS_PATH=/data/models
+make test-models VLM_BACKEND=transformers MODELS_PATH=/data/models
+```
+
+This is a known gap: the script repeats the defaults and the validation of `Settings` in bash.
+One source for both is a Stage 1 follow-up (see
+[architecture.md](docs/explanation/architecture.md#carry-forward-notes-for-stage-1)).
+
+`HF_CLI` replaces the downloader (the tests use a fake one). It is split on spaces into a command
+and its arguments, so a path that contains a space does not work; point it at a wrapper script
+whose path has none.
+
+#### 5. Start the Service
 
 ```bash
 make run
 ```
 
-`make run` is `python -m fastapi_szumplate`. The API listens on http://127.0.0.1:8000. The
+`make run` is `python -m formlens`. The API listens on http://127.0.0.1:8000. The
 interactive docs (`/docs`, `/redoc`) and the spec (`/openapi.json`) are **off by default**, and
 `.env.example` keeps them off. Set `DOCS_ENABLED=true` in your `.env` to read them while you
 develop; leave them off on a public API.
 
-Start it with `python -m fastapi_szumplate`, not with the `uvicorn` command. The module configures
+Start it with `python -m formlens`, not with the `uvicorn` command. The module configures
 logging before it starts uvicorn and tells uvicorn to leave it alone (`log_config=None`) and to skip
 its own access log. If you must use the CLI, pass `--factory`
-(`uvicorn fastapi_szumplate.main:create_app --factory`); you then get uvicorn's default log format
+(`uvicorn formlens.main:create_app --factory`); you then get uvicorn's default log format
 next to ours.
 
-#### 5. Check It Works
+#### 6. Check It Works
 
 ```bash
 curl http://127.0.0.1:8000/health
@@ -178,27 +207,6 @@ curl http://127.0.0.1:8000/health
 {"status": "ok"}
 ```
 
-<!-- begin:template -->
----
-
-## Use it
-
-Click **Use this template** on GitHub, clone your copy, then rename it and (optionally) drop the
-example domain:
-
-```bash
-python scripts/init_project.py orders-api                    # keep the example
-python scripts/init_project.py orders-api --without-example  # start from the bare service
-uv sync --locked && make openapi && make check
-```
-
-The script renames the distribution, the package, its directory and every mention of the old
-name, deletes itself, its test and the smoke script, and strips what only makes sense in the
-template. Review the contact URL in `src/<package>/openapi.py` and the copyright holder in
-`LICENSE` afterwards. CI proves on every change (job `template-smoke`, locally
-`make smoke-template`) that both variants pass `make check`.
-
-<!-- end:template -->
 ---
 
 ## 📃 Commands
@@ -206,22 +214,23 @@ template. Review the contact URL in `src/<package>/openapi.py` and the copyright
 | Command | Purpose |
 | --- | --- |
 | `make install` | Install locked dependencies (`uv sync --locked`) |
-| `make run` | Start the service (`python -m fastapi_szumplate`) |
+| `make run` | Start the service (`python -m formlens`) |
 | `make format` | Ruff format |
 | `make lint` | Ruff lint |
 | `make typecheck` | mypy, strict |
 | `make imports` | import-linter contracts (module boundaries) |
-| `make test` | pytest |
+| `make test` | pytest, without the `slow` tests that need the downloaded models |
+| `make test-models` | The `slow` tests: fail unless the pinned model files are under `MODELS_PATH` (run `make download-models` first) |
+| `make download-models` | Download the pinned Granite-Docling model for `VLM_BACKEND` into `MODELS_PATH` (needs network, uv and about 0.6 GB) |
 | `make check` | What CI runs: format check, lint, mypy, import contracts, tests with coverage, OpenAPI drift |
 | `make openapi` | Regenerate `openapi.json` from the app (never edit it by hand) |
 | `make openapi-check` | Fail if `openapi.json` is out of date |
 | `make api-lint` | Spectral on `openapi.json`, failing on warnings (needs Node; runs `npx`) |
-| `make api-breaking` | oasdiff against `origin/main:openapi.json`, failing on breaking changes (needs oasdiff or Docker) |
+| `make api-breaking` | oasdiff against `origin/main:openapi.json`, failing on breaking changes except those listed in `oasdiff-ignore.txt` (the removed example routes; delete the file after the first merge to `main`); needs oasdiff or Docker |
 | `make schemathesis` | Start the service, run Schemathesis with every check and phase, stop it |
 | `make api-check` | `openapi-check`, `api-lint`, `api-breaking` and `schemathesis` |
 | `make audit` | pip-audit on every locked dependency group |
 | `make docker-build` / `make docker-run` | Build and run the image (needs Docker and a `.env`) |
-| `make smoke-template` | Build projects from the template in a temp dir, with and without the example, and run their gates (slow) | <!-- only:template -->
 | `make clean` | Remove caches and generated files |
 
 `make check` is what CI runs; run it before you push.
@@ -236,21 +245,11 @@ template. Review the contact URL in `src/<package>/openapi.py` and the copyright
 | --- | --- | --- |
 | `GET` | `/health` | Liveness (`get_health`): `{"status": "ok"}` while the process serves requests |
 | `GET` | `/health/ready` | Readiness (`get_readiness`): 200 when every registered check passes, else a 503 problem |
-| `GET` | `/v1/books` | List books, one page at a time (`list_books`) | <!-- only:example -->
-| `POST` | `/v1/books` | Add a book; 201 with a `Location` header (`create_book`) | <!-- only:example -->
-| `GET` | `/v1/books/{book_id}` | Fetch one book (`get_book`) | <!-- only:example -->
-| `PUT` | `/v1/books/{book_id}` | Replace the title and author (`update_book`) | <!-- only:example -->
-| `GET` | `/v1/loans` | List loans, optionally for one member or only active (`list_loans`) | <!-- only:example -->
-| `POST` | `/v1/loans` | Lend a book to a member (`create_loan`) | <!-- only:example -->
-| `GET` | `/v1/loans/{loan_id}` | Fetch one loan (`get_loan`) | <!-- only:example -->
-| `POST` | `/v1/loans/{loan_id}/return` | Mark a loan as returned (`return_loan`) | <!-- only:example -->
 
 The spec is generated from the app into `openapi.json` by `make openapi` and committed; never edit
 it by hand. `make check` fails when it is out of date, and `make api-check` lints it, compares it
 with `main` for breaking changes and runs Schemathesis against a live server. With
 `DOCS_ENABLED=true` the service also serves `/docs`, `/redoc` and `/openapi.json`.
-The create operations carry OpenAPI links to the operations that need their id, <!-- only:example -->
-so stateful Schemathesis reaches them. <!-- only:example -->
 
 ### 🔎 Example
 
@@ -319,40 +318,9 @@ flowchart TD
 See [docs/explanation/architecture.md](docs/explanation/architecture.md) for why the layers are
 drawn this way.
 
-<!-- begin:example -->
-The example domain is removable as a unit. It lives in `src/fastapi_szumplate/library/` with its
-tests in `tests/library/`, and `include_library(app)` in `main.py` mounts it; nothing in the core
-imports it. `library/books/` has the default module shape (router, schemas, models, service,
-repository); `library/loans/` the hexagonal shape (domain, ports, service layer, adapters,
-entrypoints).
-
-Two module shapes are shown on purpose. Start every module like `books` (router, schemas, models,
-service, repository). Move one to the `loans` shape (domain objects, ports, adapters) only when
-its rules grow enough to hurt; see [docs/explanation/architecture.md](docs/explanation/architecture.md).
-
-The example is a small library: books with a fixed number of copies, and loans with six rules
-(unique ISBN, a free copy, three active loans per member, no repeat borrow, return once, not
-before the borrow date). Each of the five guarded rules answers 409 with its own problem type
-(for example `urn:problem:fastapi-szumplate:isbn-already-exists`) and has a parallel test that
-fails when the guard is removed; the sixth (not before the borrow date) is a plain domain check
-with a sequential test. Storage is in memory behind a repository port.
-<!-- end:example -->
-
-<!-- begin:example -->
-### 🧹 Removing the example
-
-Follow [docs/how-to/remove-the-example.md](docs/how-to/remove-the-example.md): it lists the steps
-and what stays.
-`python scripts/init_project.py <name> --without-example` does them for you, and CI proves on <!-- only:template -->
-every change (job `template-smoke`, locally `make smoke-template`) that the result passes <!-- only:template -->
-`make check`. <!-- only:template -->
-<!-- end:example -->
-
-<!-- begin:bare -->
 Start every module with the default shape (router, schemas, models, service, repository); see
 [docs/how-to/add-a-module.md](docs/how-to/add-a-module.md) and
 [docs/explanation/architecture.md](docs/explanation/architecture.md).
-<!-- end:bare -->
 
 ---
 
@@ -362,28 +330,46 @@ Start every module with the default shape (router, schemas, models, service, rep
 make test
 ```
 
-- Tests mirror `src/`. They build settings with `Settings(_env_file=None)`, replace dependencies
-  with `app.dependency_overrides` and build data with factories.
+- Tests mirror `src/`. They build settings with `Settings(_env_file=None)` (`make_settings` in
+  `tests/conftest.py`) and replace dependencies with `app.dependency_overrides`. There is no
+  factories module yet; a test sets the values it asserts on inline.
+- An autouse fixture in `tests/conftest.py` removes every setting from the environment, so an
+  exported `DOCS_ENABLED=true` cannot change a test. The `slow` tests are exempt: they read
+  `MODELS_PATH` and `VLM_BACKEND` from the environment.
 - Tests of the core use `/health` and the probe routes of `tests/probes.py`, so they never depend
   on a domain module.
 - pytest runs in strict mode: unknown markers and config keys fail, and so does any warning.
 - The order is random (pytest-randomly); `uv run pytest -p no:randomly` replays a run in file
   order. Every test has a 60 s timeout.
 - `make check` runs the suite under coverage with branches and fails below 95%.
-- `make schemathesis` starts the service and runs Schemathesis with every check and phase against
-  `openapi.json`.
+- Tests marked `slow` need the downloaded model and are deselected by default. `make test-models`
+  runs them and **fails**, not skips, when the pinned files are missing. A test of a real
+  conversion arrives in Stage 1.
+- `tests/test_download_models.py` runs the download script against a fake downloader, so it needs
+  no network.
 
-Parallel-guard tests carry the `concurrency` marker: `uv run pytest -m concurrency`. <!-- only:example -->
+### Manual offline check
+
+Nobody has automated this yet. After `make download-models`, turn the network off (Wi-Fi off or
+cable out), then:
+
+```bash
+make run                         # in one terminal
+curl http://127.0.0.1:8000/health   # in another: {"status": "ok"}
+```
+
+The service must start and answer without network access. Stage 0 never loads the model, so this
+only proves that nothing at start-up needs the network; repeat it with a real conversion in Stage 1.
 
 ---
 
 ## 🔧 Configuration
 
-All settings come from the environment or `.env` (see `.env.example`):
+The service reads all settings from the environment or `.env` (see `.env.example`); the download script reads the environment only (see [Download the Model](#4-download-the-model)):
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `APP_NAME` | `fastapi-szumplate` | API title |
+| `APP_NAME` | `formlens` | API title |
 | `ENVIRONMENT` | `local` | `local`, `test` or `production` |
 | `LOG_LEVEL` | `INFO` | `DEBUG` to `CRITICAL` |
 | `LOG_FORMAT` | `auto` | `json`, `console`, or `auto` (console when `local`, otherwise JSON) |
@@ -392,9 +378,14 @@ All settings come from the environment or `.env` (see `.env.example`):
 | `HOST`, `PORT`, `RELOAD` | `127.0.0.1`, `8000`, `false` | Server binding |
 | `GRACEFUL_SHUTDOWN_SECONDS` | `20` | Time open requests get after SIGTERM; keep it below the orchestrator's grace period |
 | `DEFAULT_PAGE_SIZE` | `20` | Page size when `limit` is omitted |
-| `LOANS_MAX_ACTIVE_PER_MEMBER`, `LOAN_DAYS` | `3`, `14` | Example domain only | <!-- only:example -->
+| `MODELS_PATH` | `./models` | Folder with the downloaded models; a relative path is read from the working directory; an empty value is refused |
+| `VLM_BACKEND` | `mlx` | `mlx` (the backend this project uses on Apple Silicon) or `transformers` |
+| `MAX_UPLOAD_MB` | `25` | Largest accepted upload, in megabytes (1 or more) |
+| `MAX_CONCURRENCY` | `1` | Documents converted at the same time (1 or more) |
 
 Every key is optional. An invalid value stops the service at start-up instead of failing later.
+`MODELS_PATH`, `VLM_BACKEND`, `MAX_UPLOAD_MB` and `MAX_CONCURRENCY` are read and validated in
+Stage 0 but nothing uses them until Stage 1.
 
 ---
 
@@ -408,7 +399,7 @@ Every key is optional. An invalid value stops the service at start-up instead of
 - **Hardened container** — the image runs as user `10001`, the virtual environment belongs to root, and `compose.yaml` adds a read-only filesystem, no capabilities and `no-new-privileges`
 - **Audited dependencies** — `make audit` runs pip-audit on every locked group, in CI on every pull request and weekly; Dependabot waits 7 days before proposing a new release
 
-Report a vulnerability through [GitHub issues](https://github.com/JanSzewczyk/fastapi-szumplate/issues).
+Report a vulnerability through [GitHub issues](https://github.com/JanSzewczyk/form-lens-api/issues).
 
 ---
 
@@ -429,9 +420,6 @@ with a read-only filesystem. Docker is not required for development.
 
 Run one worker and one replica. Anything the app keeps in memory is per process, so a second
 worker or replica would not see it.
-The example's repositories and the locks that make its rules atomic (`threading.RLock`) are such <!-- only:example -->
-state; move them to a database first, as <!-- only:example -->
-[docs/how-to/swap-in-a-database.md](docs/how-to/swap-in-a-database.md) shows. <!-- only:example -->
 
 Set `GRACEFUL_SHUTDOWN_SECONDS` below your orchestrator's grace period (Kubernetes: 30 s by
 default). Behind a proxy, also set uvicorn's `FORWARDED_ALLOW_IPS`.
@@ -445,7 +433,6 @@ default). Behind a proxy, also set uvicorn's `FORWARDED_ALLOW_IPS`.
 - `check` — `make check`, a coverage summary and the dependency audit; the only job of the weekly run
 - `api` — Spectral, oasdiff against `main` and Schemathesis (`make api-check`)
 - `docker` — builds the image and starts it through `compose.yaml` until its health check passes, then calls `/health`
-- `template-smoke` — renames a copy, with and without the example, then runs `make check` <!-- only:template -->
 - `free-threaded` — the tests on free-threaded Python; informational, it never blocks a merge
 
 Actions are pinned to exact version tags. `.github/dependabot.yml` proposes weekly updates for uv,
@@ -461,10 +448,6 @@ breaking change bumps the minor). Other types release nothing. A release updates
 release to `CHANGELOG.md` and creates the GitHub Release with generated notes. Preview the next
 version locally with `uv run --group release semantic-release --noop version --print`.
 
-<!-- begin:template -->
-The release step is commented out in the template; `scripts/init_project.py` enables it in a copy.
-
-<!-- end:template -->
 
 If `main` is protected, the workflow's token must be allowed to push to it (a ruleset bypass).
 
@@ -473,9 +456,9 @@ If `main` is protected, the workflow's token must be allowed to push to it (a ru
 ## 📁 Project Structure
 
 ```text
-src/fastapi_szumplate/
+src/formlens/
   main.py            create_app(settings): wiring only
-  __main__.py        python -m fastapi_szumplate
+  __main__.py        python -m formlens
   config.py          Settings (pydantic-settings), get_settings dependency
   logging_config.py  structlog on stdlib: JSON or console, redaction, idempotent
   middleware.py      request id, bound log context, one access-log line per request
@@ -486,20 +469,16 @@ src/fastapi_szumplate/
   pagination.py      Page[T] envelope and limit/offset parameters
   health/            GET /health (liveness), GET /health/ready (readiness, 503 problem)
 tests/               mirrors src
-scripts/             export_openapi.py, run_schemathesis.sh
-docs/                how-to guides, reference, explanation
+scripts/             export_openapi.py, run_schemathesis.sh, download_models.sh
+docs/                how-to guides, reference, explanation, licences
+models/              downloaded models (git-ignored)
 ```
-
-<!-- begin:template -->
-`scripts/init_project.py` (rename the copy, optionally drop the example) and
-`scripts/smoke_template.sh` (prove the result passes its gates) exist only in the template.
-<!-- end:template -->
 
 ### 📂 Key Directories
 
-- **`src/fastapi_szumplate/`** — the service; the core modules above plus one package per feature
+- **`src/formlens/`** — the service; the core modules above plus one package per feature
 - **`tests/`** — pytest suite, one test module per source module, with `conftest.py` and the probe routes of `probes.py`
-- **`scripts/`** — the OpenAPI export and the Schemathesis runner that the Makefile calls
+- **`scripts/`** — the OpenAPI export, the Schemathesis runner and `download_models.sh` (the pinned model download) that the Makefile calls
 - **`docs/`** — how-to guides, the problem type reference and the architecture notes
 
 ### 🧾 Important Configuration Files
@@ -519,10 +498,9 @@ docs/                how-to guides, reference, explanation
 
 - **How-to**
   - [Add a module](docs/how-to/add-a-module.md)
-  - [Remove the example](docs/how-to/remove-the-example.md) <!-- only:example -->
-  - [Swap in a database](docs/how-to/swap-in-a-database.md) <!-- only:example -->
 - **Reference** — [Problem types](docs/reference/problem-types.md)
 - **Explanation** — [Architecture](docs/explanation/architecture.md)
+- **Licences** — [Models and libraries](docs/licenses.md)
 
 ---
 
@@ -534,6 +512,8 @@ docs/                how-to guides, reference, explanation
 - **`make openapi-check` fails** — the API changed; run `make openapi` and commit `openapi.json`
 - **`make schemathesis` says the port is in use** — set `SCHEMATHESIS_PORT` to a free port
 - **`make api-breaking` skips the check** — `origin/main` has no `openapi.json` yet
+- **`make test-models` fails** — the pinned model is not in `MODELS_PATH`; run `make download-models` with the same `VLM_BACKEND` and `MODELS_PATH`, exported or passed to `make` (neither command reads `.env`)
+- **`make download-models` says uvx is missing** — install [uv](https://docs.astral.sh/uv/), or set `HF_CLI` to another Hugging Face downloader (split on spaces; no space inside its path)
 - **Compose rejects `env_file`** — `required: false` needs Docker Compose 2.24 or newer
 - **The container ignores `ENVIRONMENT`, `HOST` or `PORT` from `.env`** — `make docker-run` and `compose.yaml` force them on purpose
 
@@ -558,14 +538,15 @@ also generates `CHANGELOG.md` from the Conventional Commits.
 
 ## 📜 License
 
-This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
+This project is proprietary: all rights reserved by Szum-Tech. See the [LICENSE](LICENSE) file. The
+licences of the models and libraries it uses are listed in [docs/licenses.md](docs/licenses.md).
 
 ---
 
 ## 📧 Contact & Support
 
-- 🐛 [Open an issue](https://github.com/JanSzewczyk/fastapi-szumplate/issues)
-- ⭐ [Star this repository](https://github.com/JanSzewczyk/fastapi-szumplate)
+- 🐛 [Open an issue](https://github.com/JanSzewczyk/form-lens-api/issues)
+- ⭐ [Star this repository](https://github.com/JanSzewczyk/form-lens-api)
 - 👨‍💻 Check out the maintainer's [GitHub profile](https://github.com/JanSzewczyk)
 
 ---
@@ -576,6 +557,6 @@ This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) f
 
 If this service helped you, please consider giving it a ⭐ on GitHub!
 
-[⬆ Back to Top](#-fastapi-szumplate)
+[⬆ Back to Top](#-formlens)
 
 </div>

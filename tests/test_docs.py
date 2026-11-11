@@ -3,7 +3,10 @@
 import re
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI
+
+from tests.model_pins import MODEL_PINS
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -28,15 +31,33 @@ def test_every_problem_type_in_the_reference_is_registered(app: FastAPI) -> None
     assert documented == registered
 
 
-def test_readme_lists_every_make_target() -> None:
-    makefile = (ROOT / "Makefile").read_text(encoding="utf-8").replace("\\\n", " ")
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    targets = [
-        target
-        for line in re.findall(r"^\.PHONY:(.*)$", makefile, re.MULTILINE)
-        for target in line.split("#")[0].split()
-    ]
+@pytest.mark.parametrize("backend", sorted(MODEL_PINS), ids=sorted(MODEL_PINS))
+def test_licenses_and_download_script_state_the_pinned_model(backend: str) -> None:
+    pin = MODEL_PINS[backend]
+    licenses = (ROOT / "docs" / "licenses.md").read_text(encoding="utf-8")
+    script = (ROOT / "scripts" / "download_models.sh").read_text(encoding="utf-8")
 
-    assert targets
-    for target in targets:
-        assert f"make {target}" in readme, target
+    assert f'REPO="{pin.repo}"' in script
+    assert f'REVISION="{pin.revision}"' in script
+    assert f"| `{backend}` | [{pin.repo}]" in licenses
+    assert f"`{pin.revision}`" in licenses
+
+
+def test_readme_names_every_make_target_as_a_whole_word() -> None:
+    """`make test` is a prefix of `make test-models`, so each target is matched as a whole word."""
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    targets = re.findall(r"^([a-z][a-z-]*):", makefile, re.MULTILINE)
+
+    assert "test-models" in targets
+    missing = [t for t in targets if not re.search(rf"\bmake {re.escape(t)}(?![\w-])", readme)]
+    assert missing == []
+
+
+def test_every_make_target_is_declared_phony() -> None:
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    joined = makefile.replace("\\\n", " ")
+    declared = {t for line in re.findall(r"^\.PHONY:(.*)$", joined, re.MULTILINE) for t in line.split()}
+    rules = set(re.findall(r"^([a-z][a-z-]*):", makefile, re.MULTILINE))
+
+    assert rules == declared

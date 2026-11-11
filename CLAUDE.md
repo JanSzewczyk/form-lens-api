@@ -1,4 +1,4 @@
-# fastapi-szumplate
+# formlens
 
 FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
 
@@ -6,10 +6,16 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
 
 - `make check` is the gate: Ruff format check, Ruff lint, mypy, import contracts, tests with
   coverage, OpenAPI drift. Run it before every commit.
-- `make run` starts the service (`python -m fastapi_szumplate`). Tests use `uv run pytest`.
+- `make run` starts the service (`python -m formlens`). Tests use `uv run pytest`.
 - `make openapi` regenerates `openapi.json`. It is generated from the app; never edit it by hand.
   Commit it with any change that alters the API.
 - `make api-check` runs Spectral, oasdiff and Schemathesis (needs Node, Docker or oasdiff).
+- `make download-models` downloads the pinned model for `VLM_BACKEND` into `MODELS_PATH` (network,
+  uv, about 0.6 GB). The script reads the process environment and `make` variables, never `.env`:
+  `make download-models VLM_BACKEND=transformers MODELS_PATH=/data/models`.
+- `make test-models` runs the tests marked `slow` and fails, not skips, when the pinned model files
+  are missing. The default `addopts` is `-m "not slow"`, so `make check` and `uv run pytest`
+  deselect them.
 - Add dependencies with `uv add` (runtime) or `uv add --group test|dev|api`, and commit `uv.lock`.
 - `make audit` runs pip-audit on every locked dependency group.
 - One test: `uv run pytest tests/test_problems.py::test_name`. Order is random (pytest-randomly);
@@ -19,12 +25,6 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
 
 - Service core: `config.py`, `logging_config.py`, `middleware.py`, `problems.py`, `openapi.py`,
   `types.py`, `pagination.py`, `query.py`, `health/`.
-<!-- begin:example -->
-- Example domain: `src/fastapi_szumplate/library/` and `tests/library/`, mounted by one
-  `include_library(app)` call in `main.py`. Nothing else may import `library`. Remove it with
-  `docs/how-to/remove-the-example.md`.
-- `books` uses the default module shape; `loans` is hexagonal.
-<!-- end:example -->
 - Add structure to a module only when it hurts (see `docs/explanation/architecture.md`).
   New modules start like `docs/how-to/add-a-module.md` says.
 
@@ -40,15 +40,14 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
 - A request that stored state forbids is 409, not 422. Guard a check-then-write rule atomically
   and add a parallel test with the `concurrency` marker; remove the guard once and confirm the
   test fails, running the mutant from a copy and printing the package `__file__` first.
-- Tests build settings with `Settings(_env_file=None)` (see `tests/conftest.py: make_settings`),
-  replace dependencies with `app.dependency_overrides` (cleared afterwards by the `app` fixture)
-  and build data with factories, setting every value the test asserts on.
-  The example's factories are in `tests/library/factories.py`. <!-- only:example -->
+- Tests build settings with `Settings(_env_file=None)` (see `tests/conftest.py: make_settings`) and
+  replace dependencies with `app.dependency_overrides` (cleared afterwards by the `app` fixture).
+  There is no factories module yet: set every value the test asserts on inline.
+- The autouse fixture `_isolate_from_exported_settings` (`tests/conftest.py`) deletes every setting
+  from the environment for each test, so an exported `DOCS_ENABLED` cannot leak in. Tests marked
+  `slow` are exempt: they read `MODELS_PATH` and `VLM_BACKEND` from the environment.
 - Tests of the core use `/health` and the probe routes of `tests/probes.py` (fixture
   `probe_app`).
-  They never call the example's routes, so they survive removing the example; <!-- only:example -->
-  `tests/library/` holds the example-bound ones. <!-- only:example -->
-  `make smoke-template` proves a copy without the example passes `make check`. <!-- only:template -->
 - Logging: structlog, constant event names, snake_case fields, no f-strings, no `print`. Log a
   handled error once, where it is handled. Never log secrets; the `redact` processor is a safety
   net, not a licence.
@@ -62,12 +61,7 @@ FastAPI service. Python 3.15, uv, Ruff, mypy (strict), pytest.
   `.github/workflows/ci.yml` (`tests/test_tooling.py` checks they match). Dependabot does not
   bump the Spectral, oasdiff and pip-audit pins in `Makefile`.
 - `README.md` must name every make target (`tests/test_docs.py`).
+- The model downloader is pinned in `scripts/download_models.sh` (`uvx --from huggingface_hub==2.4.0 hf`).
+  Dependabot does not bump it, and it runs outside `uv.lock`, so `make audit` does not see it or its
+  dependencies (see `docs/licenses.md`). Bump it by hand.
 - `uv run --python 3.15t` replaces `.venv` with the free-threaded build; `uv sync` restores it.
-<!-- begin:template -->
-- A line ending in an audience marker (`only:template`, `begin:example` … `end:example`, also as
-  `# ...` outside Markdown) is kept or dropped by `scripts/init_project.py` in a project copy.
-  Text that names the example (library, book, loan, isbn) must sit inside an `example` block,
-  or `make smoke-template` fails its reference check.
-- `tests/test_init_project.py` and `make smoke-template` copy tracked and untracked
-  (not ignored) files, so a stray file in the repo root can fail them. Move it out first.
-<!-- end:template -->

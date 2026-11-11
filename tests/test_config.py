@@ -1,13 +1,19 @@
+import os
+import re
+import subprocess
+import sys
 from pathlib import Path
 from typing import Annotated
 
 import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
+from hypothesis import given
+from hypothesis import strategies as st
 from pydantic import ValidationError
 
-from fastapi_szumplate.config import Settings, get_settings
-from fastapi_szumplate.main import create_app
+from formlens.config import Settings, get_settings
+from formlens.main import create_app
 from tests.conftest import make_settings
 
 ENV_EXAMPLE = Path(__file__).resolve().parent.parent / ".env.example"
@@ -19,6 +25,15 @@ def test_defaults_are_safe_for_a_public_api() -> None:
     assert settings.docs_enabled is False
     assert settings.cors_origins == []
     assert settings.log_level == "INFO"
+
+
+def test_model_settings_default_to_the_local_apple_silicon_setup() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.models_path == Path("models")
+    assert settings.vlm_backend == "mlx"
+    assert settings.max_upload_mb == 25
+    assert settings.max_concurrency == 1
 
 
 def test_a_copied_env_example_keeps_the_docs_off_in_production() -> None:
@@ -38,18 +53,34 @@ def test_environment_variables_override_defaults(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("PORT", "9100")
     monkeypatch.setenv("DOCS_ENABLED", "true")
     monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
+    monkeypatch.setenv("MODELS_PATH", "/srv/models")
+    monkeypatch.setenv("VLM_BACKEND", "transformers")
+    monkeypatch.setenv("MAX_UPLOAD_MB", "5")
+    monkeypatch.setenv("MAX_CONCURRENCY", "2")
 
     settings = Settings(_env_file=None)
 
     assert settings.port == 9100
     assert settings.docs_enabled is True
     assert settings.cors_origins == ["https://app.example.com"]
+    assert settings.models_path == Path("/srv/models")
+    assert settings.vlm_backend == "transformers"
+    assert settings.max_upload_mb == 5
+    assert settings.max_concurrency == 2
 
 
 @pytest.mark.parametrize(
     ("field", "value"),
-    [("log_level", "LOUD"), ("environment", "staging"), ("port", 0), ("default_page_size", 101)],
-    ids=["log-level", "environment", "port", "page-size"],
+    [
+        ("log_level", "LOUD"),
+        ("environment", "staging"),
+        ("port", 0),
+        ("default_page_size", 101),
+        ("vlm_backend", "cuda"),
+        ("max_concurrency", 0),
+        ("max_upload_mb", 0),
+    ],
+    ids=["log-level", "environment", "port", "page-size", "vlm-backend", "max-concurrency", "max-upload-mb"],
 )
 def test_invalid_values_are_rejected(field: str, value: object) -> None:
     with pytest.raises(ValidationError, match=field):
@@ -80,3 +111,184 @@ def test_get_settings_returns_the_settings_of_the_running_app(app: FastAPI) -> N
     app.state.settings = make_settings(app_name="probe-app")
 
     assert TestClient(app).get("/_settings").json() == {"name": "probe-app"}
+
+
+# --- Stage 0 contract tests: model settings, environment handling, `.env.example` -----------------
+
+ROOT = Path(__file__).resolve().parent.parent
+
+#: A value that differs from the default, for every setting. A new setting must be added here (the
+#: test below fails until it is), so the isolation test always covers every field.
+NON_DEFAULT_ENVIRONMENT = {
+    "APP_NAME": "from-the-shell",
+    "ENVIRONMENT": "production",
+    "LOG_LEVEL": "DEBUG",
+    "LOG_FORMAT": "console",
+    "DOCS_ENABLED": "true",
+    "CORS_ORIGINS": '["https://shell.example.com"]',
+    "HOST": "0.0.0.0",  # noqa: S104  # a value to be ignored, never bound
+    "PORT": "9999",
+    "RELOAD": "true",
+    "GRACEFUL_SHUTDOWN_SECONDS": "3",
+    "DEFAULT_PAGE_SIZE": "5",
+    "MODELS_PATH": "/from/the/shell",
+    "VLM_BACKEND": "transformers",
+    "MAX_UPLOAD_MB": "5",
+    "MAX_CONCURRENCY": "3",
+}
+
+
+def test_the_isolation_test_below_covers_every_setting() -> None:
+    assert set(NON_DEFAULT_ENVIRONMENT) == {name.upper() for name in Settings.model_fields}
+
+
+def test_a_settings_object_built_without_arguments_holds_every_declared_default() -> None:
+    """The shell's exported settings never reach `Settings(_env_file=None)`: the autouse fixture removes them."""
+    declared = {name: field.get_default(call_default_factory=True) for name, field in Settings.model_fields.items()}
+
+    assert Settings(_env_file=None).model_dump() == declared
+
+
+def test_the_settings_tests_pass_when_the_shell_exports_every_setting() -> None:
+    """A developer who exports `DOCS_ENABLED=true` or `VLM_BACKEND=transformers` sees no failing test.
+
+    Every test builds Settings with `_env_file=None`, which skips the file but not the shell. The autouse
+    fixture in `tests/conftest.py` deletes the settings from the environment, except for the `slow` tests:
+    `make test-models MODELS_PATH=/data/models` (README) needs the variables they read. The child run holds
+    the tests that read the defaults, so it fails when the fixture stops deleting a variable.
+    """
+    environment = {**os.environ, **NON_DEFAULT_ENVIRONMENT}
+    here = "tests/test_config.py"
+
+    result = subprocess.run(  # noqa: S603  # this interpreter, fixed arguments
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            f"{here}::test_defaults_are_safe_for_a_public_api",
+            f"{here}::test_model_settings_default_to_the_local_apple_silicon_setup",
+            f"{here}::test_a_settings_object_built_without_arguments_holds_every_declared_default",
+        ],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stdout[-2000:]
+    assert "3 passed" in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("MAX_UPLOAD_MB", "0"),
+        ("MAX_UPLOAD_MB", "-1"),
+        ("MAX_UPLOAD_MB", "abc"),
+        ("MAX_UPLOAD_MB", "1.5"),
+        ("MAX_UPLOAD_MB", ""),
+        ("MODELS_PATH", ""),
+        ("MAX_CONCURRENCY", "0"),
+        ("MAX_CONCURRENCY", "-3"),
+        ("MAX_CONCURRENCY", "two"),
+        ("VLM_BACKEND", "cuda"),
+        ("VLM_BACKEND", "MLX"),
+        ("VLM_BACKEND", " mlx"),
+    ],
+    ids=[
+        "upload-zero",
+        "upload-negative",
+        "upload-text",
+        "upload-fraction",
+        "upload-empty",
+        "models-path-empty",
+        "concurrency-zero",
+        "concurrency-negative",
+        "concurrency-text",
+        "backend-unknown",
+        "backend-wrong-case",
+        "backend-padded",
+    ],
+)
+def test_an_invalid_model_setting_in_the_environment_stops_the_app_from_being_built(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str
+) -> None:
+    monkeypatch.setenv(name, value)
+
+    with pytest.raises(ValidationError, match=name.lower()):
+        create_app()
+
+
+@pytest.mark.parametrize("name", ["MAX_UPLOAD_MB", "MAX_CONCURRENCY"])
+def test_one_is_the_smallest_accepted_count(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
+    monkeypatch.setenv(name, "1")
+
+    assert getattr(Settings(_env_file=None), name.lower()) == 1
+
+
+@given(count=st.integers(min_value=1, max_value=10**9))
+def test_any_count_from_one_up_is_accepted(count: int) -> None:
+    settings = make_settings(max_upload_mb=count, max_concurrency=count)
+
+    assert (settings.max_upload_mb, settings.max_concurrency) == (count, count)
+
+
+@given(count=st.integers(max_value=0))
+def test_any_count_below_one_is_rejected(count: int) -> None:
+    with pytest.raises(ValidationError, match="max_upload_mb"):
+        make_settings(max_upload_mb=count)
+    with pytest.raises(ValidationError, match="max_concurrency"):
+        make_settings(max_concurrency=count)
+
+
+@given(backend=st.text().filter(lambda text: text not in {"mlx", "transformers"}))
+def test_any_backend_but_the_two_known_ones_is_rejected(backend: str) -> None:
+    with pytest.raises(ValidationError, match="vlm_backend"):
+        make_settings(vlm_backend=backend)
+
+
+def test_the_environment_beats_the_env_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("MAX_CONCURRENCY=3\nMAX_UPLOAD_MB=9\n", encoding="utf-8")
+    monkeypatch.setenv("MAX_CONCURRENCY", "2")
+    monkeypatch.delenv("MAX_UPLOAD_MB", raising=False)
+
+    settings = Settings(_env_file=env_file)
+
+    assert settings.max_concurrency == 2  # the environment wins
+    assert settings.max_upload_mb == 9  # the file fills what the environment leaves out
+
+
+def test_a_relative_models_path_stays_relative() -> None:
+    assert make_settings(models_path="weights").models_path == Path("weights")
+
+
+def test_every_env_example_key_is_a_setting_and_every_setting_has_a_key() -> None:
+    """`extra="ignore"` lets a misspelled key (`MAX_UPLOAD_MBS`) through the equality test above."""
+    text = ENV_EXAMPLE.read_text(encoding="utf-8")
+    keys = set(re.findall(r"^#?\s*([A-Z][A-Z0-9_]*)=", text, re.MULTILINE))
+
+    assert keys == {name.upper() for name in Settings.model_fields}
+
+
+def test_the_service_refuses_to_start_on_an_invalid_model_setting(tmp_path: Path) -> None:
+    """The README promises it. The process fails while reading settings, before it binds a port."""
+    environment = {**os.environ, "VLM_BACKEND": "cuda", "HOST": "127.0.0.1", "PORT": "18765"}
+
+    result = subprocess.run(  # this interpreter, fixed arguments
+        [sys.executable, "-m", "formlens"],
+        cwd=tmp_path,  # no .env here
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+
+    assert result.returncode != 0
+    assert "vlm_backend" in result.stderr

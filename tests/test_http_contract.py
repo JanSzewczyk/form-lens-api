@@ -19,13 +19,13 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx2 import Response
 
-from fastapi_szumplate.health.readiness import register_readiness_check
-from fastapi_szumplate.main import create_app
+from formlens.health.readiness import register_readiness_check
+from formlens.main import create_app
 from tests.conftest import make_settings
 from tests.probes import add_probe_routes
 
 PROBLEM = "application/problem+json"
-TYPE = "urn:problem:fastapi-szumplate:"
+TYPE = "urn:problem:formlens:"
 JSON_BYTES = {"Content-Type": "application/json"}
 REQUEST_ID_SHAPE = re.compile(r"[A-Za-z0-9._-]{1,64}")
 PROBLEM_FIELDS = {"type", "title", "status", "detail", "errors", "request_id"}

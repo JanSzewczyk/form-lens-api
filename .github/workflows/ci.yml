@@ -80,7 +80,7 @@ jobs:
         with:
           context: . # the checkout, so .dockerignore applies as in a local build
           load: true
-          tags: fastapi-szumplate:local # the image compose.yaml runs
+          tags: formlens:local # the image compose.yaml runs
           cache-from: type=gha
           cache-to: type=gha,mode=max
       # compose.yaml runs it read-only, without capabilities and with no-new-privileges; `--wait`
@@ -93,31 +93,6 @@ jobs:
         if: failure()
         run: docker compose logs
 
-  # begin:template
-  # Proves that a project made from the template passes its own `make check`, with and without
-  # the example. The same script runs locally as `make smoke-template`.
-  template-smoke:
-    name: Template smoke 🧪
-    if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        variant: ["", "--rename-only"]
-    steps:
-      - name: Checkout code 📚
-        uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-      - name: Set up uv 🐍
-        uses: astral-sh/setup-uv@v10.3.3
-        with:
-          version: ${{ env.UV_VERSION }}
-      - name: Run smoke test 🧪
-        run: scripts/smoke_template.sh ${{ matrix.variant }}
-
-  # end:template
   # Informational: the free-threaded build exposes races the GIL hides. Never blocks a merge.
   free-threaded:
     name: Free-threaded 🧵

@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
-from fastapi_szumplate.pagination import Page, PageParams, get_page_params
+from formlens.pagination import Page, PageParams, get_page_params
 from tests.conftest import make_settings
 
 

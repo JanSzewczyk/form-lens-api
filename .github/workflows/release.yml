@@ -37,12 +37,7 @@ jobs:
           version: ${{ env.UV_VERSION }}
       - name: Install dependencies ⚙️
         run: uv sync --locked --group release
-      # begin:template
-      #        HERE 👇👇👇
-      #        Expose block of code below when you use this template for a project
-      #        (scripts/init_project.py does it for you); the template cuts no releases of its own.
-      # end:template
-      - name: Create release 🚀  # uncomment:project
-        run: uv run semantic-release version  # uncomment:project
-        env:  # uncomment:project
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # uncomment:project
+      - name: Create release 🚀
+        run: uv run semantic-release version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

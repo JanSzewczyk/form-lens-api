@@ -5,10 +5,6 @@
 Top-level packages are business areas; the layers (router, schemas, service, repository) sit
 inside each. A change to one area edits one folder. `health` is the one area the core ships.
 
-<!-- begin:example -->
-The example adds `library/books` and `library/loans`: a change to "loans" edits one folder.
-<!-- end:example -->
-
 ## Module shapes, and one rule for choosing
 
 - **Default shape**: router, schemas, models, service, repository. The service is a few lines and
@@ -22,11 +18,6 @@ Structure is added to one module at a time, when it hurts: the same rule copied 
 a rule test that needs a database, business terms missing from the code. Do not convert a module
 to match another.
 
-<!-- begin:example -->
-`books` has the default shape (its only rule is "an ISBN is unique"); `loans` has the hexagonal
-one, with `Loan.lend` and `Loan.give_back` in `domain/`. Do not convert `books` to match `loans`.
-<!-- end:example -->
-
 ## Import direction
 
 Routers depend on services, services on the domain and its ports, adapters on the domain. The
@@ -39,25 +30,11 @@ factory `main.py`, then the features (`health`, `middleware`, `openapi`, `loggin
 `pagination`), then the foundations (`problems`, `config`, `query`, `types`). A layer imports only
 the layers below it. A new core module joins the contract in the layer it belongs to.
 
-<!-- begin:example -->
-Only `dependencies.py`, `library/__init__.py` and `main.py` import adapters. `loans` asks `books`
-for one number (the capacity) through `loans/adapters/books_catalog.py`.
-
-## The core never knows the example
-
-`main.py` calls `include_library(app)`; nothing else outside `library/` mentions it. That is what
-makes the example removable as a unit.
-<!-- end:example -->
-
 ## Wiring
 
 `create_app(settings)` builds the app. Adapters are built once and stored on `app.state`;
 dependencies read them from the request, so tests replace them with `app.dependency_overrides` and
 the app never has module-level state.
-
-<!-- begin:example -->
-The example's repositories are built in `include_library`.
-<!-- end:example -->
 
 ## Logging is configured twice, on purpose
 
@@ -85,6 +62,74 @@ strings.
 
 A rule that reads before it writes is guarded by one atomic step, and each guard has a parallel
 test that fails without it. See [add-a-module](../how-to/add-a-module.md).
-<!-- begin:example -->
-[swap-in-a-database](../how-to/swap-in-a-database.md) shows the guards in SQL.
-<!-- end:example -->
+
+## FormLens components
+
+Stage 0 ships the empty service. Everything marked *planned* (dotted arrows) arrives in Stage 1 or later and does not exist yet.
+
+```mermaid
+flowchart TD
+    client["Client"]
+    subgraph service["formlens (exists)"]
+        main["main.create_app: wiring, middleware, problem handlers"]
+        health["health: GET /health, GET /health/ready"]
+        config["config.Settings: MODELS_PATH, VLM_BACKEND, MAX_UPLOAD_MB, MAX_CONCURRENCY"]
+    end
+    subgraph planned["Planned (Stage 1)"]
+        parsing["parsing/: router, service, Parser Protocol"]
+        docling["Docling adapter: VlmPipeline with Granite-Docling"]
+        fake["Fake Parser, so make check never loads a model"]
+    end
+    models[("MODELS_PATH: pinned model, make download-models")]
+    client --> main --> health
+    main -.-> parsing -.-> docling -.-> models
+    parsing -.-> fake
+    config --> main
+```
+
+The first domain module is `src/formlens/parsing/`, in the default shape. It depends on a `Parser`
+Protocol; the Docling adapter implements it, and a fake implements it for tests, so the gate runs
+without a model. The model is loaded from `MODELS_PATH` only, never fetched at run time.
+
+## Decisions
+
+- **Python 3.15 stays.** A scratch environment installed `docling[vlm]` on Python 3.15.2, the
+  imports of `docling` and `mlx_vlm` worked, and one synthetic page converted through
+  `VlmPipeline` with the MLX model in 8 s with `HF_HUB_OFFLINE=1`. `uv add 'docling[vlm]'` also
+  resolved and locked in a throwaway copy of the project (189 packages) and `uv sync --locked`
+  passed there. The 3.14 fallback was not needed.
+- **Docling is not a dependency yet.** Stage 0 has no code that imports it. Whether it becomes a
+  runtime dependency or a dependency group is decided in Stage 1, when the adapter exists.
+- **The model is downloaded by a script, not by Docling.** `make download-models` pins a revision
+  and writes `MODELS_PATH/<owner>--<repo>`, the folder name Docling looks for under its
+  `artifacts_path` (`resolve_model_artifacts_path` in `docling/models/inference_engines/vlm/_utils.py`),
+  so Stage 1 can pass `settings.models_path` unchanged.
+- **Tests that need the model are `slow`.** `make check` deselects them; `make test-models` runs
+  them and fails when the files are missing. A conversion test with the real model is a Stage 1
+  task.
+- **The core modules stay.** `pagination`, `query` and `types` have no caller yet; later list and
+  upload endpoints use them. `tests/probes.py` still serves the core tests.
+
+## Carry-forward notes for Stage 1
+
+Nothing here is implemented. Do each item when the module that needs it exists.
+
+- **Known gap: two sources of defaults.** `scripts/download_models.sh` repeats in bash the defaults
+  and the validation that `Settings` holds (`VLM_BACKEND`, `MODELS_PATH`), and it never reads
+  `.env`. A `.env` with `VLM_BACKEND=transformers` or `MODELS_PATH=/elsewhere` moves the service
+  but not `make download-models`, and `make test-models` builds `Settings(_env_file=None)`, so it
+  ignores `.env` too. Today only a test keeps the script and `Settings` in agreement
+  (`tests/test_download_models.py`). Give both one source, for example by having the script ask
+  `Settings` for the values, and drop the copy.
+
+- Pin the `docling`, `transformers`, `huggingface_hub` and `PIL` loggers to `WARNING` in
+  `configure_logging`, so a dependency cannot flood the log or print a document's text at `DEBUG`.
+- Extend `SENSITIVE_PARTS` in the redaction processor with the field names that will carry document
+  content or file names, and keep uploaded text out of log events altogether.
+- Check that `VlmPipeline` fetches no other model or file at run time (run a conversion with
+  `HF_HUB_OFFLINE=1` as the Stage 0 launch test did, and with the network cut).
+- Add the problem types the upload route needs (413 too large, 415 unsupported media type, 503
+  busy), each with its row in `docs/reference/problem-types.md`, and add `python-multipart`.
+- Guard concurrency with one atomic semaphore: when `MAX_CONCURRENCY` conversions are running,
+  answer 503 or 429 with `Retry-After`. Prove it with a parallel test marked `concurrency`, then
+  remove the guard once and confirm the test fails.

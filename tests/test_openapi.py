@@ -10,9 +10,9 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute, iter_route_contexts
 from fastapi.testclient import TestClient
 
-from fastapi_szumplate.main import create_app
-from fastapi_szumplate.openapi import add_tags
-from fastapi_szumplate.problems import PROBLEM_MEDIA_TYPE, VALIDATION_ERROR
+from formlens.main import create_app
+from formlens.openapi import add_tags
+from formlens.problems import PROBLEM_MEDIA_TYPE, VALIDATION_ERROR
 from tests.conftest import make_settings
 from tests.probes import add_probe_routes
 
@@ -114,7 +114,7 @@ def test_every_operation_has_a_summary_and_tag(spec: dict[str, Any]) -> None:
 def test_metadata_describes_the_api(spec: dict[str, Any]) -> None:
     info = spec["info"]
 
-    assert info["license"]["name"] == "MIT"
+    assert info["license"]["name"] == "Proprietary (all rights reserved)"
     assert info["contact"]["name"]
     assert info["description"]
     assert spec["servers"] == [{"url": "/", "description": "The host that serves this document"}]

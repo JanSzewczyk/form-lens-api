@@ -15,3 +15,5 @@ htmlcov/
 .DS_Store
 .openapi-base.json
 .schemathesis/
+# Downloaded document models (make download-models)
+models/

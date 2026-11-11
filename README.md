@@ -559,8 +559,11 @@ The service reads all settings from the environment or `.env` (see `.env.example
 Every key is optional. An invalid value stops the service at start-up instead of failing later. The timeouts are
 nested and checked together: `PARSE_TIMEOUT_SECONDS` < `JOB_TIMEOUT_SECONDS`, and `LLM_TIMEOUT_SECONDS` <
 `JOB_TIMEOUT_SECONDS`. `LLM_BASE_URL` is refused unless it names this machine or its private network (a loopback or
-private address, a name without a dot such as a Compose service, or `host.docker.internal`) and carries no user
-name or password. `DB_URL` accepts `sqlite:` URLs only. `.env.example` lists every key with its default.
+private address in its standard form, a name without a dot such as a Compose service, or `host.docker.internal`) and
+carries no user name or password. Shorthand spellings of an address (`134744072`, `0x08080808`, `127.1`, octal),
+link-local addresses (169.254.0.0/16, fe80::/10) and unspecified ones are refused. **A name without a dot is trusted
+to resolve locally**: nothing here asks a resolver, so a Compose service name or a `/etc/hosts` entry that points
+elsewhere is yours to keep right. `DB_URL` accepts `sqlite:` URLs only. `.env.example` lists every key with its default.
 `MAX_UPLOAD_MB` is enforced twice: a body whose `Content-Length` is over the limit is refused with
 413 before it is read, and the service checks the exact size of the file. `MAX_CONCURRENCY` documents
 may be converted at the same time; the next request gets 503 `parser-busy` at once, nothing is queued.
@@ -608,7 +611,7 @@ naming the default `LLM_MODEL` and the prompt version, so the numbers always say
 - **CORS off** — empty `CORS_ORIGINS` adds no CORS middleware; when on, credentials are not allowed
 - **Nothing echoed back** — validation errors return `loc`, `msg` and `type` but never the submitted value, and a 500 carries no exception details
 - **Redacted logs** — values under keys containing `password`, `token`, `authorization`, `api_key`, `secret`, `cookie`, `filename`, `file_name`, `content`, `markdown`, `plain_text` or `extracted_text` are logged as `***`, and so are `result`, `prompt`, `llm_output`, `response`, `fields` and `values`; a safety net, not a licence to log secrets
-- **The model server must be yours** — `LLM_BASE_URL` is refused unless it is a loopback or private address, a name without a dot or `host.docker.internal`, and the model client ignores the proxy variables of the environment; a test records every connect and shows that only the configured host is contacted
+- **The model server must be yours** — `LLM_BASE_URL` is refused unless it is a loopback or private address in its standard form, a name without a dot (trusted to resolve locally) or `host.docker.internal` (shorthand and link-local addresses are refused), and the model client ignores the proxy variables of the environment; a test records every connect and shows that only the configured host is contacted
 - **A pattern cannot hang a job** — a template's `pattern` runs in a linear-time engine; lookaround and backreferences are refused (see [Templates and extractions](#templates-and-extractions))
 - **No `Server` header** — uvicorn's server header is turned off
 - **Hardened container** — the image runs as user `10001`, the virtual environment belongs to root, and `compose.yaml` adds a read-only filesystem, no capabilities and `no-new-privileges`

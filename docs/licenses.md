@@ -84,10 +84,10 @@ Ollama. Nothing of it was downloaded or run when this section was written.
 - The default is a choice, not a finding: the golden set (`make evaluate`, [README](../README.md#accuracy))
   is what decides the model, and `LLM_MODEL` is a setting.
 - Nobody has read the model card, the licence of the weights or any use restriction. **Do not rely on any licence
-  for this model until a person has read it.** A digest is shown, as far as I know,
-  by `ollama list` (and in the `/api/tags` answer of a running Ollama); **that is unverified: Ollama was not available
-  when this was written**, so check which command and field give it. Record it here with the date, and the licence
-  text from the model card, when that is done.
+  for this model until a person has read it.** The digest is expected in the output of
+  `ollama list` and in the `/api/tags` answer of a running Ollama. **Not verified: Ollama was not available when
+  this was written**, so which command and field give it has to be checked. Record it here with the date, and the
+  licence text from the model card, when that is done.
 - `tests/test_docs.py` fails when this table stops naming the default `LLM_MODEL`, so a change of the default
   cannot go by without this page.
 

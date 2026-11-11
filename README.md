@@ -778,6 +778,7 @@ models/              downloaded models (git-ignored)
 - **`make schemathesis`** migrates a throwaway database and runs the service with a fake parser and a fake extractor, so the worker is off and extractions stay `pending`
 - **`make schemathesis` says the port is in use** — set `SCHEMATHESIS_PORT` to a free port
 - **`make api-breaking` skips the check** — `origin/main` has no `openapi.json` yet
+- **`no such column` or `no such table` after pulling a branch** — Stage 2 is unreleased, so its first migration (`0001`) was edited in place and Alembic does not re-run it on a database that already has it. Delete your local `formlens.db` (and its `-wal` and `-shm` files) and run `make migrate` on a fresh file. From the first merge to `main` every table change is a new revision and this no longer happens
 - **The service stops at start-up with `database_not_migrated`** — the database is new or behind the code; run `make migrate`
 - **An extraction fails with `llm_unavailable`** — Ollama does not answer at `LLM_BASE_URL`, or the model is not pulled; see [docs/how-to/run-the-llm.md](docs/how-to/run-the-llm.md)
 - **An extraction stays `pending`** — the worker is busy with an earlier job, or a timed-out conversion is still running; or the queue is not being drained because the service was started with another process

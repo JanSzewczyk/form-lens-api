@@ -306,7 +306,7 @@
                 "type": "null"
               }
             ],
-            "description": "Regular expression a `text` value must match (at most 200 characters).",
+            "description": "Regular expression a `text` value must match anywhere in it unless it is anchored (at most 200 characters). A linear-time subset: no lookahead, lookbehind or backreference.",
             "title": "Pattern"
           },
           "required": {

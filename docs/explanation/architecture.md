@@ -25,19 +25,50 @@ domain imports no web framework, no ORM, no adapter. Only `dependencies.py` and 
 wires the app (`main.py`) import adapters. Modules refer to one another by id and never import
 each other's models. `make imports` enforces the contracts in `pyproject.toml`.
 
-The core has layers of its own: `__main__` (the only module that imports uvicorn), then the
-factory `main.py`, then the features (`health`, `middleware`, `openapi`, `logging_config`,
-`pagination`, `parsing`), then the foundations (`problems`, `config`, `query`, `types`), then
-`modelspec` (the pinned models, standard library only). A layer imports only the layers below it.
+The core has layers of its own, top to bottom: `__main__` (the only module that imports uvicorn), the
+factory `main.py`, `migrations` (the only module that imports Alembic), `extractions`, the features
+(`health`, `middleware`, `openapi`, `logging_config`, `parsing`, `templates`), then `pagination` and
+`database` (the only module that builds an engine), then the foundations (`problems`, `config`, `query`, `types`,
+`patterns`), then `modelspec` (the pinned models, standard library only). A layer imports only the layers
+below it; `|` in the contract makes modules of one layer independent of each other, which is why `pagination` is
+below the features and not beside them (`templates` imports it).
 `parsing` has layers of its own (router, dependencies, service, then slots, ports and models, then
 exceptions), and three more contracts keep the document stack (`docling`, `torch`, `transformers`,
 `mlx_vlm`, `PIL`) inside `parsing/docling_parser.py`, which only `main` imports. A new core module joins the contract in the layer it belongs to.
 
+## The two Stage 2 modules
+
+**`templates` (default shape)** holds the description of a form. `models.py` has frozen dataclasses whose
+invariants raise `InvalidTemplate` when an object is built, so a `Template` that exists is valid; `json_schema.py`
+turns the fields into a JSON Schema (pure: every field is a required key that may be `null`); `repository.py` is a
+Protocol and its SQLite adapter, and `replace` bumps the version in one `UPDATE`. SQLAlchemy is imported only
+by `repository.py` and `tables.py`.
+
+**`extractions` (hexagonal)**, because its rules (a job's life, retries, recovery, the queue) are easy to get wrong
+and need a database to test otherwise:
+
+- `domain/` is the standard library only: `Extraction` (frozen; `claim`, `complete`, `fail`, `retry`,
+  `requeue_busy`, `interrupted`, `is_expired`, `missing_required`), `TemplateSnapshot`, the ports
+  (`ExtractionRepository`, `TextSource`, `FieldExtractor`, `TemplateCatalog`, `Deadline`) and the errors.
+- `service_layer/` has `ExtractionService` (`submit`, `get`) and `ExtractionProcessor` (`run_once`, `recover`,
+  `purge_expired`). `run_once` is synchronous and one job, so a test drives it with fakes and a fake clock.
+- `adapters/` implement the ports: the SQLite repository, Docling text (through `parsing.service`), the Ollama
+  extractor, the template catalog (through `templates.service`, plain data only) and `ThreadDeadline`.
+- `entrypoints/` has the routes, the error mapping and the worker (an asyncio task that calls `run_once` on a
+  thread).
+
+Contracts: `entrypoints` above the service layer and the adapters (independent of each other) above `domain`;
+the domain and the service layer import no framework, database, client or adapter; `httpx2` and `jsonschema`
+only in the Ollama adapter.
+
 ## Wiring
 
-`create_app(settings)` builds the app. Adapters are built once and stored on `app.state`;
-dependencies read them from the request, so tests replace them with `app.dependency_overrides` and
-the app never has module-level state.
+`create_app(settings, *, parser_factory=None, extractor_factory=None, start_worker=True)` builds the app.
+Adapters are built once and stored on `app.state`; dependencies read them from the request, so tests replace them
+with `app.dependency_overrides` and the app never has module-level state. Building the app touches no database
+and starts nothing. The lifespan does, in this order: check that the database is at the newest revision (it logs
+`database_not_migrated` with a hint and stops the start), load the parser, build the extractor and the processor,
+**recover** the jobs a stop left running, start the worker. Tests use `start_worker=False` and call `run_once`.
 
 ## Logging is configured twice, on purpose
 
@@ -175,7 +206,55 @@ mlx-vlm and Pillow out of everything but the adapter, and the adapter out of eve
 - **The core modules stay.** `pagination`, `query` and `types` have no caller yet; later list
   endpoints use them. `tests/probes.py` still serves the core tests.
 
+## Stage 2 decisions
+
+The numbering is the plan's.
+
+- **D1 Language model.** Ollama, `qwen3:8b` by default (`LLM_MODEL` is a setting), thinking off, structured output.
+  The default is a choice: the golden set decides. Its licence and digest are not verified (see
+  [licenses](../licenses.md)).
+- **D2 `extractions` is hexagonal**, `templates` is the default shape.
+- **D3 Migrations are explicit.** `python -m formlens migrate` or `make migrate`; the service only checks the
+  database is at head, and the container migrates before it serves. There is no `create_all`.
+- **D4 The queue has a cap.** `QUEUE_MAX_PENDING`; one `INSERT ... SELECT ... WHERE (count) < cap` is the guard.
+- **D5 Scope.** Text only, one worker in the API process, SQLite, no Redis or Celery.
+- **D6 The template is copied at submit time**: the extraction stores its id, version, fields and schema, with no
+  foreign key. **D9** follows: deleting a template is a 204 and never a conflict.
+- **D7 "Idempotency is 1".** A late result is applied at most once, and not at all after a timeout: the terminal write
+  is `UPDATE ... WHERE status = 'running' AND attempts = ?`. Attempts are counted when a job is claimed.
+- **D8 Retries.** Terminal at once: timeout, invalid file, document too long. Retried while attempts remain
+  (`JOB_MAX_ATTEMPTS`, 2): a parse failure, an unreachable model, an answer that fails the schema. A busy parser
+  gives the attempt back. An error nobody translated ends the job as `interrupted`.
+- **D10 Retention.** A finished extraction is kept `RESULT_TTL_HOURS`; reads treat an expired one as not found
+  before the purge has run; the worker purges at start and about once a minute; the upload is deleted when the job
+  ends.
+- **D11 One request.** `POST /v1/extractions` is multipart: the `file` (the existing `read_upload`) and a `Form`
+  field `template_id`.
+- **D12 Golden set.** In the repository, synthetic only, seeded; `make evaluate`; no number is claimed until it has
+  run.
+- **D13 The upload waits in a table** (`extraction_inputs`, a BLOB), deleted when the job ends.
+- **D14 The model server must be local**: `LLM_BASE_URL` is a loopback or private address, a name without a dot or
+  `host.docker.internal`; the client ignores the proxy variables.
+- **D15 Missing required fields.** A `null` in a required field is still `completed`; `missing_required` says which.
+- **D16 Context.** The text is bounded by `LLM_MAX_INPUT_CHARS` (`document_too_long`); the output is validated with
+  `jsonschema`, which is the contract; temperature 0 and a fixed seed. If Ollama's `/v1` endpoint ignores the context
+  size, a derived model from a Modelfile is the fix (see [run the LLM](../how-to/run-the-llm.md)).
+- **D17 Client regular expressions** run in a linear-time engine (`patterns.py`): lookaround and backreferences are
+  refused when the template is made. Python's `re` took 4.8 s on `(a+)+$` with 26 characters, and a thread stuck
+  in it cannot be stopped, so the queue would stop for good.
+- **D18 Names.** The spec's `invalid_request` is the existing `validation-error`; slugs stay kebab-case.
+- **The worker stops with a bound.** `anyio`'s `abandon_on_cancel=True` plus a wait of `GRACEFUL_SHUTDOWN_SECONDS - 2`;
+  a job that is still running is left behind and recovered at the next start. A job that timed out is an
+  abandoned thread: nothing is claimed until it has ended.
+- **Follow-up.** Handwriting and checkboxes through a vision model are not covered; the text is read by Docling and
+  a text model.
+
 ## Open issues
+
+- **The extraction has never run against a real Ollama.** The request fields (`response_format` with a JSON
+  Schema, `reasoning_effort`, `seed`) were not checked against Ollama's documentation or a running server; the
+  adapter strips a `<think>` block and validates every answer, so a wrong field is visible, not silent. The
+  accuracy of the model on the golden set is unmeasured; see the README.
 
 - **`pip-audit` and Dependabot on `torch 2.15.0+cpu`.** On Linux the lock pins `torch` and
   `torchvision` to the CPU wheels of `https://download.pytorch.org/whl/cpu` (`[tool.uv.sources]`

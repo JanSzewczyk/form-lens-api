@@ -80,7 +80,10 @@ class FieldSpec(BaseModel):
         default=None,
         min_length=1,
         max_length=MAX_PATTERN_LENGTH,
-        description="Regular expression a `text` value must match (at most 200 characters).",
+        description=(
+            "Regular expression a `text` value must match anywhere in it unless it is anchored (at most 200 "
+            "characters). A linear-time subset: no lookahead, lookbehind or backreference."
+        ),
     )
 
     def to_domain(self) -> TemplateField:

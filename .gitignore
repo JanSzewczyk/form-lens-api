@@ -20,3 +20,5 @@ models/
 *.db
 *.db-wal
 *.db-shm
+# Parsed texts and the report of `make evaluate`
+.golden/

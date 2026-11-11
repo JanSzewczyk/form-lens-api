@@ -70,6 +70,58 @@ Dependabot does not bump the pin either (it sits in `scripts/download_models.sh`
 open: the downloader is not under the lock yet, and Stage 1 did not close it. Decide whether to
 bring it under the lock or to accept the gap (see [Open checks](#open-checks)).
 
+## Stage 2: the language model and the libraries it added
+
+Stage 2 reads the text of a document with a language model that runs on the same machine, through
+Ollama. Nothing of it was downloaded or run when this section was written.
+
+### The language model
+
+| Setting | Model | Digest | Licence | Checked |
+| --- | --- | --- | --- | --- |
+| `LLM_MODEL` default: `qwen3:8b` | `qwen3:8b` in the Ollama library | **not recorded** | **not verified** | **not verified: the model was not pulled on the machine that built this** |
+
+- The default is a choice, not a finding: the golden set (`make evaluate`, [README](../README.md#accuracy))
+  is what decides the model, and `LLM_MODEL` is a setting.
+- Nobody has read the model card, the licence of the weights or any use restriction. **Do not rely on any licence
+  for this model until a person has read it.** The digest is what `ollama show qwen3:8b` prints after the pull;
+  record it here with the date, and the licence text from the model card, when that is done.
+- `tests/test_docs.py` fails when this table stops naming the default `LLM_MODEL`, so a change of the default
+  cannot go by without this page.
+
+### The libraries
+
+These became runtime dependencies in Stage 2 (`sqlalchemy`, `alembic`, `httpx2` and `jsonschema` were asked for;
+the rest are what they pull in, plus `pydantic-core`, whose linear-time regular expression engine now checks
+the patterns of clients). The versions are the ones in `uv.lock`. The licence column is what the installed
+package declares, read by `scripts/package_licenses.py`, which prints these rows (2026-11-11):
+
+```bash
+uv run python scripts/package_licenses.py sqlalchemy alembic mako markupsafe httpx2 httpcore2 truststore \
+    jsonschema jsonschema-specifications referencing rpds-py attrs pydantic-core
+```
+
+| Package | Version | Licence declared in the package metadata | Field read |
+| --- | --- | --- | --- |
+| sqlalchemy | 2.1.8 | MIT | License-Expression |
+| alembic | 1.20.1 | MIT | License-Expression |
+| mako | 1.4.3 | MIT | License-Expression |
+| markupsafe | 3.0.4 | BSD-3-Clause | License-Expression |
+| httpx2 | 2.16.0 | BSD-3-Clause | License-Expression |
+| httpcore2 | 2.16.0 | BSD-3-Clause | License-Expression |
+| truststore | 0.10.5 | MIT | License-Expression |
+| jsonschema | 4.26.0 | MIT | License-Expression |
+| jsonschema-specifications | 2025.9.1 | MIT | License-Expression |
+| referencing | 0.37.0 | MIT | License-Expression |
+| rpds-py | 2026.9.1 | MIT | License-Expression |
+| attrs | 26.1.0 | MIT | License-Expression |
+| pydantic-core | 2.50.4 | MIT | License-Expression |
+
+This is the same kind of check as for the libraries above: **metadata only; no licence file was read**. It
+covers the packages that were added or became runtime dependencies, not every transitive dependency of the
+service. `tests/test_docs.py` compares this table with the installed metadata, so a version bump that changes
+a licence fails there.
+
 ## What was run
 
 Stage 1: the real adapter with the pinned `mlx` model on an Apple M1 Pro, through `make test-models`:
@@ -97,6 +149,8 @@ Nobody has done these yet; they are for a person, not a script:
 - Read the licence of every package marked **Unverified**, and of the transitive dependencies
   that ship weights or data.
 - Confirm that proprietary distribution of the service is compatible with all of the above.
+- Read the model card and the licence of the language model, record its digest, and replace the
+  **not verified** cells of [The language model](#the-language-model).
 - Repeat the comparison, and update the date at the top, whenever a revision or a package version
   changes.
 

@@ -1,4 +1,4 @@
-.PHONY: install format lint typecheck imports test check run migrate openapi openapi-check api-lint \
+.PHONY: install format lint typecheck imports test check run migrate evaluate openapi openapi-check api-lint \
 	api-breaking schemathesis api-check audit download-models test-models docker-build docker-run clean
 
 # bash for `set -o pipefail` in recipes (macOS make 3.81 has no .SHELLFLAGS).
@@ -29,8 +29,9 @@ imports:
 test:
 	uv run pytest
 
-# The tests marked `slow` need the downloaded models (make download-models): the model files check, the
-# real model through the app and the offline check. They fail, not skip, when the files are missing.
+# The tests marked `slow` need the downloaded models (make download-models) and, for the extraction, a running
+# Ollama with LLM_MODEL pulled: the model files check, the real model through the app, the offline check and the
+# end-to-end extraction. They fail, not skip, when a model is missing or Ollama does not answer.
 # `make check` deselects them.
 test-models:
 	uv run pytest -m slow
@@ -52,6 +53,13 @@ run:
 # start on a database that is not at the newest revision.
 migrate:
 	uv run python -m formlens migrate
+
+# Reads the 48 synthetic documents of tests/golden/ with the real document model and the local model, and prints
+# how many fields it got right and how many empty fields it filled anyway. Needs `make download-models` and a
+# running Ollama with LLM_MODEL pulled (docs/how-to/run-the-llm.md); it stops with a message when either is
+# missing. The parsed texts are cached in .golden/, so a new prompt or model does not parse again.
+evaluate:
+	uv run python -m tests.golden.evaluate
 
 # openapi.json is generated from the app; never edit it by hand.
 openapi:

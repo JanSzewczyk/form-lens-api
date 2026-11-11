@@ -84,6 +84,7 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["D", "S101", "S105", "S106", "ARG"]  # ARG: fixtures requested for their effect
 "scripts/**" = ["T201", "D"]
+"tests/golden/evaluate.py" = ["T201"]  # prints the table `make evaluate` shows
 
 [tool.mypy]
 strict = true
@@ -145,7 +146,9 @@ explicit = true
 branch = true
 # Directories, not package names: Alembic runs `env.py` and the revision scripts under module names of its
 # own (`env`, `v0001_initial`), which a package name would not match, so they would count as never run.
-source_dirs = ["src/formlens", "scripts"]
+source_dirs = ["src/formlens", "scripts", "tests/golden"]
+# The golden set's code (generator, scoring, `make evaluate`) is measured; its test files are not.
+omit = ["tests/golden/test_*.py"]
 
 [tool.coverage.report]
 show_missing = true

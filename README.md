@@ -17,13 +17,15 @@
 
 ## 👋 Hello there!
 
-FormLens API by Szum-Tech turns forms into structured data with IBM's Granite-Docling model,
-which runs on your machine through [Docling](https://github.com/docling-project/docling); no
-document leaves it. **Stage 1 adds the first endpoint**: `POST /v1/documents/parse` reads a PDF,
-PNG, JPEG or TIFF and returns its text, as Markdown or as plain text. Around it are typed
-settings, structured logging, one error format (Problem Details), a generated and checked OpenAPI
-contract, a pinned model download, Docker and CI. It runs on Python 3.15 with uv, Ruff, mypy
-(strict) and pytest.
+FormLens API by Szum-Tech turns forms into structured data with models that run on your machine; no
+document leaves it. IBM's Granite-Docling model, through [Docling](https://github.com/docling-project/docling),
+reads a PDF, PNG, JPEG or TIFF into text (`POST /v1/documents/parse`). **Stage 2 adds form templates and
+extraction**: you describe the fields of a form once (`/v1/templates`), upload a document with the template
+(`POST /v1/extractions`) and read the values back later (`GET /v1/extractions/{id}`). A local language model
+([Ollama](https://ollama.com), `qwen3:8b` by default) fills in the fields from the text, one job at a time from a
+queue in the same process. Around it are typed settings, structured logging, one error format (Problem Details),
+a generated and checked OpenAPI contract, a pinned model download, SQLite with migrations, Docker and CI. It
+runs on Python 3.15 with uv, Ruff, mypy (strict) and pytest.
 
 ### ⚡ Quick Start
 
@@ -33,13 +35,18 @@ cd form-lens-api
 cp .env.example .env
 make install
 make download-models   # about 0.6 GB, once; the service does not start without the model
+make migrate           # creates the SQLite database; the service does not start on an old one
+ollama pull qwen3:8b   # the language model, once (see docs/how-to/run-the-llm.md)
 make run               # loads the model (about 5 s with warm disk caches, 11 s cold), then listens
 ```
 
-The API listens on http://127.0.0.1:8000. Read a document:
+The API listens on http://127.0.0.1:8000. Read a document's text, or extract fields with a template:
 
 ```bash
 curl -F "file=@invoice.pdf" http://127.0.0.1:8000/v1/documents/parse
+curl -X POST -H "Content-Type: application/json" http://127.0.0.1:8000/v1/templates \
+  -d '{"name": "Invoice", "fields": [{"name": "number", "type": "text", "required": true}]}'
+curl -i -F "template_id=<id from the answer>" -F "file=@invoice.pdf" http://127.0.0.1:8000/v1/extractions
 ```
 
 ## ✨ Features
@@ -47,6 +54,9 @@ curl -F "file=@invoice.pdf" http://127.0.0.1:8000/v1/documents/parse
 ### 🚀 What You Get
 
 - **📄 Document parsing** — `POST /v1/documents/parse` runs Granite-Docling through Docling on this machine and returns `text`, `page_count`, `elapsed_ms` and `model`; the file type is read from its bytes, at most `MAX_CONCURRENCY` documents are read at once, and a busy service answers 503 with `Retry-After`
+- **🧩 Form templates** — `/v1/templates` creates, lists, reads, replaces and deletes the description of a form: fields of type `text`, `number`, `integer`, `boolean`, `date` or `choice`, with limits. Each template yields a JSON Schema (every field a required key that may be `null`), versions go up by one with every replacement, and a template that breaks a rule is a 422 `invalid-template`
+- **🔎 Field extraction** — `POST /v1/extractions` queues a document and answers 202 with a `Location`; one worker reads the text with Docling and asks a local Ollama model for the fields, and the answer is validated against the template's schema. The extraction keeps a copy of the template from the moment it was submitted
+- **📥 A queue that says no** — at most `QUEUE_MAX_PENDING` extractions wait; one more is a 503 `queue-full` with `Retry-After`. A job runs at most `JOB_TIMEOUT_SECONDS`, is retried while attempts remain, and one that a restart interrupted is run again
 - **🩺 Health and readiness** — `GET /health` for liveness; `GET /health/ready` runs every registered check and answers a 503 problem that names the checks that failed
 - **🔧 Typed settings** — pydantic-settings reads the environment and `.env`, and the service refuses to start on an invalid value
 - **📝 Structured logs** — JSON or console output, an `X-Request-ID` on every response and log line, one access line per request, values under keys such as `password` or `token` redacted
@@ -64,13 +74,14 @@ curl -F "file=@invoice.pdf" http://127.0.0.1:8000/v1/documents/parse
 - [![structlog](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22structlog%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=structlog)](https://www.structlog.org/) — structured logging on top of the stdlib `logging`
 - [![Uvicorn](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22uvicorn%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Uvicorn)](https://www.uvicorn.org/) — the ASGI server, started by `python -m formlens`
 
+- [SQLAlchemy](https://www.sqlalchemy.org/) and [Alembic](https://alembic.sqlalchemy.org/) — the SQLite database and its migrations (`make migrate`); [httpx2](https://pypi.org/project/httpx2/) — the client of the local model; [jsonschema](https://python-jsonschema.readthedocs.io/) — validates what the model returns against the template's schema
 - **Docling with Granite-Docling** — the document model, a runtime dependency (`docling[vlm]`, with `torch` and, on Apple Silicon, `mlx-vlm`); `python-multipart` reads the upload. Their licences are in [docs/licenses.md](docs/licenses.md)
 
 ### 🧪 Quality Gates
 
 - [![Ruff](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22ruff%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Ruff&logo=ruff&logoColor=white)](https://docs.astral.sh/ruff/) — format and lint, with security, async, logging and docstring rules
 - [![mypy](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22mypy%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=mypy)](https://mypy.readthedocs.io/) — `strict = true` with the Pydantic plugin and extra error codes, over `src`, `tests` and `scripts`
-- [![import-linter](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22import-linter%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=import-linter)](https://import-linter.readthedocs.io/) — five contracts: the core is layered, only the entry point imports uvicorn, only the Docling adapter imports Docling, torch, transformers, mlx-vlm or Pillow, only `main` imports that adapter, and `parsing` is layered inside
+- [![import-linter](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22import-linter%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=import-linter)](https://import-linter.readthedocs.io/) — eleven contracts: the core is layered, only the entry point imports uvicorn, only the Docling adapter imports Docling, torch, transformers, mlx-vlm or Pillow, only `main` imports that adapter, only the persistence modules import SQLAlchemy and only the migrations Alembic, only the Ollama adapter imports the HTTP client and jsonschema, the extraction domain imports no framework, and `parsing`, `templates` and `extractions` are layered inside
 - [![pytest](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22pytest%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=pytest&logo=pytest&logoColor=white)](https://docs.pytest.org/) — strict mode, warnings are errors, random order, 60 s timeout per test
 - [![coverage](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22coverage%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=coverage)](https://coverage.readthedocs.io/) — branch coverage of `src` and `scripts`, at least 95%
 - [![Hypothesis](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/JanSzewczyk/form-lens-api/main/uv.lock&search=name%20%3D%20%22hypothesis%22%5Cnversion%20%3D%20%22(%5B%5E%22%5D%2B)%22&replace=%241&label=Hypothesis)](https://hypothesis.readthedocs.io/) — property-based tests
@@ -105,6 +116,7 @@ curl -F "file=@invoice.pdf" http://127.0.0.1:8000/v1/documents/parse
 - [📡 API](#-api)
 - [🧱 Architecture](#-architecture)
 - [🧪 Testing](#-testing)
+- [🎯 Accuracy](#-accuracy)
 - [🔧 Configuration](#-configuration)
 - [🔒 Security](#-security)
 - [🚀 Deployment](#-deployment)
@@ -128,6 +140,7 @@ curl -F "file=@invoice.pdf" http://127.0.0.1:8000/v1/documents/parse
 - **[uv](https://docs.astral.sh/uv/)** 0.13.7 or newer, for dependencies and virtual environments
 - **GNU Make** to run the commands below
 - **Git** for version control
+- **[Ollama](https://ollama.com)** with the language model pulled (`ollama pull qwen3:8b`): the service starts without it, but an extraction fails with `llm_unavailable` until it answers (see [docs/how-to/run-the-llm.md](docs/how-to/run-the-llm.md))
 - **Docker** (optional) for `make docker-build`, `make docker-run`, Compose and `make api-breaking` without a local oasdiff
 - **Node.js** (optional) for `make api-lint`, which runs Spectral through `npx`
 
@@ -189,7 +202,23 @@ The repositories and revisions are pinned in `src/formlens/modelspec.py`, the on
 and its arguments, so a path that contains a space does not work; point it at a wrapper script
 whose path has none.
 
-#### 5. Start the Service
+#### 5. Install the Language Model
+
+Install [Ollama](https://ollama.com) and run `ollama pull qwen3:8b`; the service reaches it at
+`LLM_BASE_URL` (`http://localhost:11434/v1`). The service starts without it. Details, and what has and has not
+been checked against a real Ollama, are in [docs/how-to/run-the-llm.md](docs/how-to/run-the-llm.md).
+
+#### 6. Create the Database
+
+```bash
+make migrate
+```
+
+This creates or updates the SQLite file named by `DB_URL` (`./formlens.db`, git-ignored). The service
+checks at start-up that the database is at the newest revision and **refuses to start** otherwise, logging
+`database_not_migrated` with this command as the hint. It never creates tables itself.
+
+#### 7. Start the Service
 
 ```bash
 make run
@@ -208,7 +237,7 @@ its own access log. If you must use the CLI, pass `--factory`
 (`uvicorn formlens.main:create_app --factory`); you then get uvicorn's default log format
 next to ours.
 
-#### 6. Check It Works
+#### 8. Check It Works
 
 ```bash
 curl http://127.0.0.1:8000/health/ready
@@ -232,6 +261,15 @@ curl -F "file=@tests/data/sample.png" "http://127.0.0.1:8000/v1/documents/parse?
 ```
 
 The small model sometimes repeats a line of a page; do not expect the text to equal the document.
+
+To extract fields, create a template, queue a document with it and poll the `Location`:
+
+```bash
+curl -s -X POST -H "Content-Type: application/json" http://127.0.0.1:8000/v1/templates \
+  -d '{"name": "Invoice", "fields": [{"name": "number", "type": "text", "required": true}, {"name": "total", "type": "number"}]}'
+curl -i -F "template_id=<id>" -F "file=@tests/data/text_layer.pdf" http://127.0.0.1:8000/v1/extractions
+curl http://127.0.0.1:8000/v1/extractions/<id from the Location header>
+```
 
 ### ⏱ How long a page takes
 
@@ -267,6 +305,7 @@ nothing here measures the container's backend, so the constant stays.
 | `make install` | Install locked dependencies (`uv sync --locked`) |
 | `make run` | Start the service (`python -m formlens`) |
 | `make migrate` | Create or update the database tables of `DB_URL` (`python -m formlens migrate`); run it before the first start |
+| `make evaluate` | Read the golden set (48 synthetic documents) with the real models and print how many fields were right (`python -m tests.golden.evaluate`); needs Ollama and the document model, and says so when it cannot run |
 | `make format` | Ruff format |
 | `make lint` | Ruff lint |
 | `make typecheck` | mypy, strict |
@@ -298,6 +337,13 @@ nothing here measures the container's backend, so the constant stays.
 | `GET` | `/health` | Liveness (`get_health`): `{"status": "ok"}` while the process serves requests |
 | `GET` | `/health/ready` | Readiness (`get_readiness`): 200 when every registered check passes (`model`: the document model is loaded), else a 503 problem |
 | `POST` | `/v1/documents/parse` | Parse a document (`parse_document`): multipart `file` (a PDF, PNG, JPEG or TIFF, at most `MAX_UPLOAD_MB`) and the query parameter `format` (`markdown`, the default, or `text`); answers `text`, `page_count`, `elapsed_ms` and `model` |
+| `POST` | `/v1/templates` | Create a template (`create_template`): 201 with the template, its `version` (1) and its generated `json_schema` |
+| `GET` | `/v1/templates` | List templates (`list_templates`), oldest first, as a `Page` (`limit`, `offset`) |
+| `GET` | `/v1/templates/{template_id}` | Read a template (`get_template`) |
+| `PUT` | `/v1/templates/{template_id}` | Replace a template (`replace_template`): the whole body again; the `version` goes up by one |
+| `DELETE` | `/v1/templates/{template_id}` | Delete a template (`delete_template`): 204; extractions already submitted keep their copy |
+| `POST` | `/v1/extractions` | Queue a document (`create_extraction`): multipart `file` and the form field `template_id`; **202** with a `Location` header and the extraction as `pending` |
+| `GET` | `/v1/extractions/{extraction_id}` | Read an extraction (`get_extraction`): `status`, `result`, `error`, `missing_required`, the template id and version, timestamps |
 
 The spec is generated from the app into `openapi.json` by `make openapi` and committed; never edit
 it by hand. `make check` fails when it is out of date, and `make api-check` lints it, compares it
@@ -318,6 +364,38 @@ The `model` check passes once the document model is loaded. Register another wit
 `register_readiness_check(app, "storage", check)`; its name then appears in `checks` (`"ok"`), and a
 failing one turns the answer into a 503 `service-not-ready` problem that names the check, not the
 error.
+
+#### Templates and extractions
+
+A **template** lists the fields of a form. A field has a `name` (lower case letters, digits and `_`, starting with
+a letter, unique), a `type` (`text`, `number`, `integer`, `boolean`, `date`, `choice`), an optional `description`
+(how it appears on the form: it helps the model), `required`, and what its type allows: `allowed_values` for a
+`choice`, `minimum` and `maximum` for a number, `pattern` for a text. Sizes are in the OpenAPI document (1 to 50
+fields; names, descriptions, patterns and values are bounded). The rules a schema cannot state, such as a choice
+without values, duplicate names or a range on a text, are a 422 `invalid-template` whose `detail` names the field
+and the rule and never a value.
+
+**A `pattern` is a regular expression in the linear-time subset** of Rust's engine (the one inside `pydantic-core`):
+no lookahead, lookbehind or backreference, and a pattern that is too large is refused. A pattern from a client runs
+on text the client does not control, and Python's `re` can take minutes on `(a+)+$`; a job stuck in it could never
+be stopped and would block the queue. The pattern is searched anywhere in the value unless it is anchored, as in
+JSON Schema.
+
+An **extraction** is the flow `POST /v1/extractions` (202, `Location`) then `GET` until `status` is `completed` or
+`failed`:
+
+| `status` | Meaning |
+| --- | --- |
+| `pending` | Queued; waits for the worker |
+| `running` | The worker took it (`attempts` counts the times) |
+| `completed` | `result` has one key per field of the template, `null` where the document does not show a value |
+| `failed` | `error` has a `reason` (`invalid_file`, `parse_failed`, `llm_unavailable`, `invalid_output`, `timed_out`, `interrupted`, `document_too_long`) and a fixed `message` |
+
+A `null` in a required field is **not** a failure: the result is delivered and `missing_required` lists the field.
+The extraction keeps a copy of the template (`template_version`) from the moment it was submitted, so a later edit
+or delete changes nothing. A finished extraction is kept for `RESULT_TTL_HOURS`, then it is a 404
+`extraction-not-found`. `POST /v1/extractions` answers 400 (empty file), 404 (`template-not-found`), 413, 415, 422
+and 503 `queue-full` with `Retry-After`; the document and the values never appear in a log line.
 
 Parsing answers with these errors (all Problem Details, see
 [docs/reference/problem-types.md](docs/reference/problem-types.md)): 400 `invalid-file` (empty, or a
@@ -374,14 +452,22 @@ answer, then the upload body cap). import-linter enforces the layers of the core
 flowchart TD
     entry["__main__ — entry point, the only module that imports uvicorn"]
     factory["main — create_app, wiring only"]
-    features["health · middleware · openapi · logging_config · pagination · parsing"]
-    foundations["problems · config · query · types"]
+    migrations["migrations — Alembic, the only module that imports it"]
+    extractions["extractions — hexagonal: entrypoints, service layer and adapters, domain"]
+    features["health · middleware · openapi · logging_config · parsing · templates"]
+    storage["pagination · database"]
+    foundations["problems · config · query · types · patterns"]
     spec["modelspec — the pinned models, standard library only"]
-    entry --> factory --> features --> foundations --> spec
+    entry --> factory --> migrations --> extractions --> features --> storage --> foundations --> spec
 ```
 
 See [docs/explanation/architecture.md](docs/explanation/architecture.md) for why the layers are
 drawn this way.
+
+`templates` has the default shape; `extractions` is hexagonal (a domain with the rules of a job, ports, adapters for
+SQLite, Docling, Ollama and the templates, and an entry-point layer for the routes and the worker) because its
+rules need a database to test otherwise. Both are described, with the decisions behind them, in
+[docs/explanation/architecture.md](docs/explanation/architecture.md).
 
 Start every module with the default shape (router, schemas, models, service, repository); see
 [docs/how-to/add-a-module.md](docs/how-to/add-a-module.md) and
@@ -396,20 +482,30 @@ make test
 ```
 
 - Tests mirror `src/`. They build settings with `Settings(_env_file=None)` (`make_settings` in
-  `tests/conftest.py`) and replace dependencies with `app.dependency_overrides`. There is no
-  factories module yet; a test sets the values it asserts on inline.
+  `tests/conftest.py`), get a private copy of a migrated SQLite file as `DB_URL` (the `db_url` fixture), and
+  replace dependencies with `app.dependency_overrides`. Test data comes from factories
+  (`tests/templates/factories.py`, `tests/extractions/factories.py`); a test sets the values it asserts on.
+- The guards of the shared state have a test with competing threads on a real file (marker `concurrency`), and each
+  guard was removed once from a copy to see the test fail: the claim of a job, the conditional write of its end,
+  the queue cap and the version bump of a template. `tests/extractions/test_repository_contract.py` runs one suite
+  against the in-memory fake and the SQLite repository.
+- The extraction logic is tested with fakes for the parser and the model, a fake clock and an extractor that can be
+  held (`tests/extractions/`); the Ollama adapter with `httpx2.MockTransport` and, for the offline check, a stub
+  server on 127.0.0.1 with every connect recorded.
 - An autouse fixture in `tests/conftest.py` removes every setting from the environment, so an
   exported `DOCS_ENABLED=true` cannot change a test. The `slow` tests are exempt: they read
-  `MODELS_PATH` and `VLM_BACKEND` from the environment.
+  `MODELS_PATH`, `VLM_BACKEND`, `LLM_BASE_URL` and `LLM_MODEL` from the environment.
 - Tests of the core use `/health` and the probe routes of `tests/probes.py`, so they never depend
   on a domain module.
 - pytest runs in strict mode: unknown markers and config keys fail, and so does any warning.
 - The order is random (pytest-randomly); `uv run pytest -p no:randomly` replays a run in file
   order. Every test has a 60 s timeout.
 - `make check` runs the suite under coverage with branches and fails below 95%.
-- Tests marked `slow` need the downloaded model and are deselected by default. `make test-models`
-  runs them all (`pytest -m slow`) and **fails**, not skips, when the pinned files are missing. They
-  read only `MODELS_PATH` and `VLM_BACKEND` from the environment and `.env`; every other setting is
+- Tests marked `slow` need the downloaded model (and, for the extraction, a running Ollama with `LLM_MODEL`
+  pulled) and are deselected by default. `make test-models`
+  runs them all (`pytest -m slow`) and **fails**, not skips, when the pinned files are missing or Ollama does not
+  answer. They
+  read only `MODELS_PATH`, `VLM_BACKEND`, `LLM_BASE_URL` and `LLM_MODEL` from the environment and `.env`; every other setting is
   removed from the environment for them, as for any test. They parse the synthetic documents of
   `tests/data/` through the real model, and one of them runs the service in a child process with
   every connect and name lookup blocked and recorded (`tests/offline_child.py`): it passes only when
@@ -460,7 +556,11 @@ The service reads all settings from the environment or `.env` (see `.env.example
 | `JOB_POLL_INTERVAL_SECONDS` | `2.0` | Seconds the idle worker waits before it looks for a job (above 0) |
 | `QUEUE_MAX_PENDING` | `100` | Extractions that may wait at once (1 or more) |
 
-Every key is optional. An invalid value stops the service at start-up instead of failing later.
+Every key is optional. An invalid value stops the service at start-up instead of failing later. The timeouts are
+nested and checked together: `PARSE_TIMEOUT_SECONDS` < `JOB_TIMEOUT_SECONDS`, and `LLM_TIMEOUT_SECONDS` <
+`JOB_TIMEOUT_SECONDS`. `LLM_BASE_URL` is refused unless it names this machine or its private network (a loopback or
+private address, a name without a dot such as a Compose service, or `host.docker.internal`) and carries no user
+name or password. `DB_URL` accepts `sqlite:` URLs only. `.env.example` lists every key with its default.
 `MAX_UPLOAD_MB` is enforced twice: a body whose `Content-Length` is over the limit is refused with
 413 before it is read, and the service checks the exact size of the file. `MAX_CONCURRENCY` documents
 may be converted at the same time; the next request gets 503 `parser-busy` at once, nothing is queued.
@@ -469,12 +569,47 @@ pages, not inside one (see the timing above).
 
 ---
 
+## 🎯 Accuracy
+
+**Not measured yet: run `make evaluate`.** Nothing here comes from a real run of the language model: it was not
+installed on the machine that wrote this, so no number is given.
+
+`make evaluate` reads the **golden set** with the real document model and the local language model, and scores
+the result field by field (`tests/golden/`):
+
+- **48 synthetic documents** made by a seeded generator (16 for each of three templates: a consent form with a
+  PESEL, an invoice, a request). Everything is invented: names are made up, a PESEL starts with `000000` (month
+  and day 00 do not exist) and every page says it is a test document. The set is the same on every run.
+- It is varied on purpose: PDFs with a text layer and scans (PNG, JPEG, a PDF that holds only a picture); a field
+  that the page does not show, whose right answer is `null` (every field is absent in some document); numbers and
+  dates that look like the answer but are not (a postal code, a phone number, the payment due date); Polish
+  letters; amounts written `1 234,56`.
+- **Exact match** is the share of the fields with an answer that the model got right, after normalising case, spaces
+  and letter form (numbers compare as numbers). **Null precision** is the share of the fields with no answer that
+  the model left `null`; the rest it invented. They are reported apart because a model that always guesses scores
+  well on the first and badly on the second.
+- The parsed text is cached in `.golden/`, so a new prompt or model is measured without parsing again
+  (`--refresh-text` parses again). The scans are drawn with Pillow and the Polish letters are composed from a base
+  letter and a mark, so they are rougher than a real scan: how well the document model reads them is also
+  unmeasured.
+
+| Model | Digest | Prompt | Date | Documents | Exact match | Null precision | Values invented |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `qwen3:8b` | not recorded | `field_extraction.v1` | not measured yet | 48 | - | - | - |
+
+After a run, `.golden/report.md` holds the section to paste here. `tests/test_docs.py` fails when this section stops
+naming the default `LLM_MODEL` and the prompt version, so the numbers always say what they are about.
+
+---
+
 ## 🔒 Security
 
 - **Docs and spec off** — `/docs`, `/redoc` and `/openapi.json` are served only with `DOCS_ENABLED=true`
 - **CORS off** — empty `CORS_ORIGINS` adds no CORS middleware; when on, credentials are not allowed
 - **Nothing echoed back** — validation errors return `loc`, `msg` and `type` but never the submitted value, and a 500 carries no exception details
-- **Redacted logs** — values under keys containing `password`, `token`, `authorization`, `api_key`, `secret`, `cookie`, `filename`, `file_name`, `content`, `markdown`, `plain_text` or `extracted_text` are logged as `***`; a safety net, not a licence to log secrets
+- **Redacted logs** — values under keys containing `password`, `token`, `authorization`, `api_key`, `secret`, `cookie`, `filename`, `file_name`, `content`, `markdown`, `plain_text` or `extracted_text` are logged as `***`, and so are `result`, `prompt`, `llm_output`, `response`, `fields` and `values`; a safety net, not a licence to log secrets
+- **The model server must be yours** — `LLM_BASE_URL` is refused unless it is a loopback or private address, a name without a dot or `host.docker.internal`, and the model client ignores the proxy variables of the environment; a test records every connect and shows that only the configured host is contacted
+- **A pattern cannot hang a job** — a template's `pattern` runs in a linear-time engine; lookaround and backreferences are refused (see [Templates and extractions](#templates-and-extractions))
 - **No `Server` header** — uvicorn's server header is turned off
 - **Hardened container** — the image runs as user `10001`, the virtual environment belongs to root, and `compose.yaml` adds a read-only filesystem, no capabilities and `no-new-privileges`
 - **Audited dependencies** — `make audit` runs pip-audit on every locked group, in CI on every pull request and weekly; Dependabot waits 7 days before proposing a new release
@@ -511,8 +646,30 @@ host folder that is mounted is chosen differently: Compose reads `MODELS_PATH` f
 the shell) for the mount, but `make docker-run` reads it from the shell or the `make` command line
 only (`make docker-run MODELS_PATH=/data/models`), not from `.env`.
 
-Run one worker and one replica. Anything the app keeps in memory is per process, so a second
-worker or replica would not see it.
+**The database lives in `/data`.** The image sets `DB_URL=sqlite:////data/formlens.db`, creates `/data` for user
+`10001` and declares it a volume; `compose.yaml` and `make docker-run` mount the named volume `formlens-data` there
+(the root filesystem stays read-only). SQLite's WAL mode needs the folder to be writable, not only the file, so a
+bind mount must be writable by user `10001`. Without a volume the data goes with the container.
+
+**The container migrates, then serves.** Its command is `python -m formlens migrate && exec python -m formlens`,
+so a new version updates the schema before it takes requests, and the service itself still refuses to start on a
+database that is not at the newest revision. Outside Docker run `make migrate` yourself.
+
+**Ollama runs outside the container**, on the host: `compose.yaml` sets
+`LLM_BASE_URL=http://host.docker.internal:11434/v1` and adds `host.docker.internal:host-gateway` (Docker Desktop
+knows the name; on Linux the line is what makes it work). `make docker-run` does the same and takes `LLM_BASE_URL`
+from your shell if you set it. Pull the model on the host (`ollama pull qwen3:8b`).
+
+**One process, one replica, one database file.** The queue and the worker live in the service process, and a
+SQLite file is not shared between replicas. A second worker or replica would break both. The queue is bounded: with
+`QUEUE_MAX_PENDING` extractions waiting, `POST /v1/extractions` answers 503 `queue-full` with `Retry-After: 30`
+and queues nothing; a client that retries after that is the whole protocol.
+
+**Stopping.** The worker stops within `GRACEFUL_SHUTDOWN_SECONDS` minus 2 s. A job that is still running then is
+left behind, and its extraction stays `running`; the next start puts it back in the queue (or fails it as
+`interrupted` when its attempts are used up, `JOB_MAX_ATTEMPTS`). A job that ran past `JOB_TIMEOUT_SECONDS` fails as
+`timed_out`, and **nothing else is started until the abandoned conversion has finished**, because Python cannot stop
+a thread and a second job beside it would break `MAX_CONCURRENCY`.
 
 Set `GRACEFUL_SHUTDOWN_SECONDS` below your orchestrator's grace period (Kubernetes: 30 s by
 default). Behind a proxy, also set uvicorn's `FORWARDED_ALLOW_IPS`.
@@ -552,9 +709,15 @@ If `main` is protected, the workflow's token must be allowed to push to it (a ru
 
 ```text
 src/formlens/
-  main.py            create_app(settings, parser_factory=None): wiring only
+  main.py            create_app(settings, parser_factory=None, extractor_factory=None, start_worker=True): wiring
   modelspec.py       the pinned model repositories, revisions and files per backend
+  database.py        the SQLite engine (WAL, BEGIN IMMEDIATE for writes), sessions, the UTC datetime type
+  patterns.py        client regular expressions, matched in linear time
+  migrations/        Alembic scripts, inside the package (python -m formlens migrate)
   parsing/           POST /v1/documents/parse: router, service, parser port, Docling adapter, body cap
+  templates/         /v1/templates: schemas, domain rules, JSON Schema generator, SQLite repository
+  extractions/       /v1/extractions, hexagonal: domain/, service_layer/, adapters/ (SQLite, Ollama,
+                     Docling text, template catalog), entrypoints/ (routes, worker)
   __main__.py        python -m formlens
   config.py          Settings (pydantic-settings), get_settings dependency
   logging_config.py  structlog on stdlib: JSON or console, redaction, idempotent
@@ -565,8 +728,8 @@ src/formlens/
   types.py           IsoDate, IsoAwareDatetime, WholeNumber
   pagination.py      Page[T] envelope and limit/offset parameters
   health/            GET /health (liveness), GET /health/ready (readiness, 503 problem)
-tests/               mirrors src; data/ holds the synthetic documents
-scripts/             export_openapi.py, run_schemathesis.sh, download_models.sh, resolve_model.py
+tests/               mirrors src; data/ holds the synthetic documents; golden/ the golden set and `make evaluate`
+scripts/             export_openapi.py, run_schemathesis.sh, download_models.sh, resolve_model.py, package_licenses.py
 docs/                how-to guides, reference, explanation, licences
 models/              downloaded models (git-ignored)
 ```
@@ -595,6 +758,7 @@ models/              downloaded models (git-ignored)
 
 - **How-to**
   - [Add a module](docs/how-to/add-a-module.md)
+  - [Run the language model](docs/how-to/run-the-llm.md)
 - **Reference** — [Problem types](docs/reference/problem-types.md)
 - **Explanation** — [Architecture](docs/explanation/architecture.md)
 - **Licences** — [Models and libraries](docs/licenses.md)
@@ -607,8 +771,14 @@ models/              downloaded models (git-ignored)
 - **`/health/` answers 404** — a trailing slash is not redirected; call `/health`
 - **Two log formats side by side** — the service was started with the `uvicorn` command; use `make run` or pass `--factory`
 - **`make openapi-check` fails** — the API changed; run `make openapi` and commit `openapi.json`
+- **`make schemathesis`** migrates a throwaway database and runs the service with a fake parser and a fake extractor, so the worker is off and extractions stay `pending`
 - **`make schemathesis` says the port is in use** — set `SCHEMATHESIS_PORT` to a free port
 - **`make api-breaking` skips the check** — `origin/main` has no `openapi.json` yet
+- **The service stops at start-up with `database_not_migrated`** — the database is new or behind the code; run `make migrate`
+- **An extraction fails with `llm_unavailable`** — Ollama does not answer at `LLM_BASE_URL`, or the model is not pulled; see [docs/how-to/run-the-llm.md](docs/how-to/run-the-llm.md)
+- **An extraction stays `pending`** — the worker is busy with an earlier job, or a timed-out conversion is still running; or the queue is not being drained because the service was started with another process
+- **`make evaluate` stops with a message** — Ollama or the document model is missing; it says which
+- **`POST /v1/extractions` answers 503 `queue-full`** — `QUEUE_MAX_PENDING` extractions are waiting; retry after the `Retry-After` seconds
 - **The service stops at start-up with `model_load_failed`** — the pinned model is not in `MODELS_PATH` for this `VLM_BACKEND`; run `make download-models` with the same two settings
 - **`make test-models` fails** — the pinned model is not in `MODELS_PATH`; run `make download-models` with the same `VLM_BACKEND` and `MODELS_PATH` (both commands read the environment and `.env` as the service does)
 - **`make download-models` says uvx is missing** — install [uv](https://docs.astral.sh/uv/), or set `HF_CLI` to another Hugging Face downloader (split on spaces; no space inside its path)

@@ -5,7 +5,7 @@ for people. Types are `urn:problem:formlens:<slug>`.
 
 | Slug | Status | Title | When |
 | --- | --- | --- | --- |
-| `validation-error` | 422 | Request validation failed | A body, path or query value is invalid on its own, a query parameter that takes one value is given twice, or `POST /v1/documents/parse` gets two `file` parts (`type` `repeated_parameter`). A `file` part without a `filename` is refused here too: it is a text field, not an upload. `errors` lists `loc`, `msg`, `type`; the submitted value is never returned. |
+| `validation-error` | 422 | Request validation failed | A body, path or query value is invalid on its own, a query parameter that takes one value is given twice, or `POST /v1/documents/parse` or `POST /v1/extractions` gets two `file` parts, or `POST /v1/extractions` gets two `template_id` parts (`type` `repeated_parameter`). A `file` part without a `filename` is refused here too: it is a text field, not an upload. `errors` lists `loc`, `msg`, `type`; the submitted value is never returned. |
 | `service-not-ready` | 503 | Service not ready | A readiness check failed. `detail` names the checks, not the errors. |
 | `invalid-file` | 400 | Invalid file | `POST /v1/documents/parse` or `POST /v1/extractions`: the file is empty, or it has a PDF, PNG, JPEG or TIFF signature but the model cannot read it (a corrupt file, an image with absurd dimensions). |
 | `file-too-large` | 413 | File too large | The upload is larger than `MAX_UPLOAD_MB`. A body that is far larger is refused before it is read. |

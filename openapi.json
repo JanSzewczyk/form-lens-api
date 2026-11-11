@@ -18,8 +18,8 @@
           }
         },
         "required": [
-          "template_id",
-          "file"
+          "file",
+          "template_id"
         ],
         "title": "Body_create_extraction",
         "type": "object"
@@ -1072,7 +1072,7 @@
                 }
               }
             },
-            "description": "Request validation failed (`validation-error`): `file` is missing, is sent more than once or is a plain field; `template_id` is missing or is not a UUID."
+            "description": "Request validation failed (`validation-error`): `file` is missing, is sent more than once or is a plain field; `template_id` is missing, is sent more than once or is not a UUID."
           },
           "503": {
             "content": {

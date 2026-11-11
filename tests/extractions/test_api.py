@@ -597,3 +597,17 @@ def test_parallel_submissions_beyond_the_queue_cap_are_503_with_retry_after_and_
     assert {answer.headers["Retry-After"] for answer in answers if answer.status_code == 503} == {"30"}
     assert len({answer.headers["Location"] for answer in queued}) == room
     assert states == ["pending"] * room
+
+
+def test_a_template_id_sent_twice_queues_nothing_and_names_the_field(app: FastAPI, client: TestClient) -> None:
+    template = make_template(client)
+
+    response = client.post(
+        URL, data={"template_id": [template["id"], template["id"]]}, files={"file": ("a.pdf", PDF, "application/pdf")}
+    )
+
+    assert response.status_code == 422
+    assert response.json()["errors"] == [
+        {"loc": ["body", "template_id"], "msg": "Send the template_id once.", "type": "repeated_parameter"}
+    ]
+    assert app.state.extraction_repository.count_pending() == 0

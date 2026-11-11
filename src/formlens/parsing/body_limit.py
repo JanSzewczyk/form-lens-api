@@ -19,7 +19,7 @@ _handle_too_large = domain_error_handler({FileTooLarge: FILE_TOO_LARGE})
 
 
 class BodyLimitMiddleware:
-    """Pure ASGI middleware for one POST path.
+    """Pure ASGI middleware for the POST paths that take an upload.
 
     A declared `Content-Length` over the cap is answered with 413 before the body is read. A body
     without one (chunked) is counted as it arrives; past the cap the framework is told the client
@@ -27,16 +27,16 @@ class BodyLimitMiddleware:
     raised from `receive`, and the parser is never reached with a truncated body.
     """
 
-    def __init__(self, app: ASGIApp, *, path: str, max_upload_mb: int) -> None:
-        """Guard `path`; the cap is the limit plus the multipart slack."""
+    def __init__(self, app: ASGIApp, *, paths: frozenset[str], max_upload_mb: int) -> None:
+        """Guard the POST requests to `paths`; the cap is the limit plus the multipart slack."""
         self.app = app
-        self._path = path
+        self._paths = paths
         self._max_upload_mb = max_upload_mb
         self._cap = max_upload_mb * BYTES_PER_MB + SLACK_BYTES
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Pass other requests through; cap the body of the guarded one."""
-        if scope["type"] != "http" or scope["method"] != "POST" or scope["path"] != self._path:
+        if scope["type"] != "http" or scope["method"] != "POST" or scope["path"] not in self._paths:
             await self.app(scope, receive, send)
             return
 

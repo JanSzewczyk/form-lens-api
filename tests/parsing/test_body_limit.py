@@ -12,6 +12,8 @@ from formlens.parsing.body_limit import SLACK_BYTES, BodyLimitMiddleware
 from formlens.parsing.models import BYTES_PER_MB
 
 PATH = "/v1/documents/parse"
+OTHER_UPLOAD_PATH = "/v1/extractions"
+PATHS = frozenset({PATH, OTHER_UPLOAD_PATH})
 CAP = BYTES_PER_MB + SLACK_BYTES
 
 type App = Callable[[Scope, Receive, Send], Awaitable[None]]
@@ -44,7 +46,7 @@ def drive(
 ) -> Run:
     run = Run()
     pending = list(chunks)
-    middleware = BodyLimitMiddleware(app, path=PATH, max_upload_mb=1)
+    middleware = BodyLimitMiddleware(app, paths=PATHS, max_upload_mb=1)
 
     async def receive() -> Message:
         if not pending:
@@ -146,9 +148,52 @@ def test_the_application_that_ends_without_answering_a_cut_body_still_gets_the_4
     assert run.status == 413
 
 
+@pytest.mark.parametrize("path", [PATH, OTHER_UPLOAD_PATH], ids=["parse", "second-upload-path"])
+def test_every_listed_path_is_capped_by_its_declared_length(path: str) -> None:
+    run = drive(read_everything_and_answer_200, [b"x"], path=path, headers=[(b"content-length", str(CAP + 1).encode())])
+
+    assert run.status == 413
+    assert run.pulled == 0
+
+
+@pytest.mark.parametrize("path", [PATH, OTHER_UPLOAD_PATH], ids=["parse", "second-upload-path"])
+def test_every_listed_path_is_capped_by_the_bytes_that_arrive(path: str) -> None:
+    run = drive(read_everything_and_answer_200, [bytes(CAP), b"x", b"y"], path=path)
+
+    assert run.status == 413
+    assert run.pulled == 2
+
+
+def test_a_middleware_given_no_paths_guards_nothing() -> None:
+    reached: list[int] = []
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        reached.append(1)
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+
+    sent: list[Message] = []
+
+    async def collect(message: Message) -> None:
+        sent.append(message)
+
+    async def never(*_: Any) -> Any:
+        raise AssertionError("not called")
+
+    middleware = BodyLimitMiddleware(app, paths=frozenset(), max_upload_mb=1)
+    scope: Scope = {
+        "type": "http",
+        "method": "POST",
+        "path": PATH,
+        "headers": [(b"content-length", str(10 * CAP).encode())],
+    }
+    asyncio.run(middleware(scope, never, collect))
+
+    assert (reached, sent[0]["status"]) == ([1], 200)
+
+
 @pytest.mark.parametrize(
     ("method", "path"),
-    [("GET", PATH), ("PUT", PATH), ("POST", "/v1/documents/other"), ("POST", "/health")],
+    [("GET", PATH), ("PUT", PATH), ("GET", OTHER_UPLOAD_PATH), ("POST", "/v1/documents/other"), ("POST", "/health")],
 )
 def test_every_other_request_is_passed_through_whatever_its_size(method: str, path: str) -> None:
     run = drive(
@@ -175,7 +220,7 @@ def test_a_websocket_scope_is_passed_through() -> None:
     async def app(scope: Scope, receive: Receive, send: Send) -> None:
         reached.append(scope["type"])
 
-    middleware = BodyLimitMiddleware(app, path=PATH, max_upload_mb=1)
+    middleware = BodyLimitMiddleware(app, paths=PATHS, max_upload_mb=1)
 
     async def never(*_: Any) -> Any:
         raise AssertionError("not called")

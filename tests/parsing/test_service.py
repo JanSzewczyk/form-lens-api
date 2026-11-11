@@ -2,7 +2,7 @@ import pytest
 from structlog.testing import capture_logs
 
 from formlens.parsing.exceptions import FileTooLarge, InvalidFile, ParseFailed, ParserBusy, UnsupportedMediaType
-from formlens.parsing.models import BYTES_PER_MB, OutputFormat
+from formlens.parsing.models import BYTES_PER_MB, DocumentType, OutputFormat
 from formlens.parsing.ports import ParseResult
 from formlens.parsing.service import DocumentService
 from formlens.parsing.slots import ParseSlots
@@ -46,6 +46,44 @@ def test_the_parser_gets_a_neutral_name_chosen_from_the_bytes(name: str, neutral
     make_service(parser).parse(content, OutputFormat.MARKDOWN)
 
     assert parser.calls == [(len(content), neutral)]
+
+
+@pytest.mark.parametrize(
+    ("name", "kind"),
+    [
+        ("text_layer.pdf", DocumentType.PDF),
+        ("sample.png", DocumentType.PNG),
+        ("sample.jpg", DocumentType.JPEG),
+        ("sample.tiff", DocumentType.TIFF),
+    ],
+)
+def test_validate_returns_the_type_of_a_document_it_accepts_without_parsing_it(name: str, kind: DocumentType) -> None:
+    parser = FakeParser()
+
+    assert make_service(parser).validate(sample(name)) == kind
+    assert parser.calls == []
+
+
+def test_validate_refuses_in_the_order_empty_then_size_then_type_and_never_reaches_the_parser() -> None:
+    parser = FakeParser()
+    service = make_service(parser, max_upload_mb=1)
+
+    with pytest.raises(InvalidFile, match="empty"):
+        service.validate(b"")
+    with pytest.raises(FileTooLarge, match="1 MB"):
+        service.validate(b"x" * (BYTES_PER_MB + 1))  # too large and of no known type: the size wins
+    with pytest.raises(UnsupportedMediaType):
+        service.validate(b"just some text")
+
+    assert parser.calls == []
+
+
+def test_validate_accepts_a_file_of_exactly_the_limit_and_refuses_one_byte_more() -> None:
+    service = make_service(FakeParser(), max_upload_mb=1)
+
+    assert service.validate(png_of_size(BYTES_PER_MB)) == DocumentType.PNG
+    with pytest.raises(FileTooLarge):
+        service.validate(png_of_size(BYTES_PER_MB + 1))
 
 
 def test_an_empty_file_is_invalid_before_anything_else_is_asked() -> None:

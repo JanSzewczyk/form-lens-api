@@ -114,7 +114,7 @@ def create_app(settings: Settings | None = None, *, parser_factory: ParserFactor
     # Starlette makes the last middleware added the outermost one: request context, then CORS,
     # then the 500 answer, then the body cap, so a 500 or a 413 carries the request id and the
     # CORS headers.
-    app.add_middleware(BodyLimitMiddleware, path=PARSE_PATH, max_upload_mb=settings.max_upload_mb)
+    app.add_middleware(BodyLimitMiddleware, paths=frozenset({PARSE_PATH}), max_upload_mb=settings.max_upload_mb)
     app.add_middleware(UnhandledErrorMiddleware)
     if settings.cors_origins:
         app.add_middleware(

@@ -10,7 +10,7 @@ from formlens.parsing.exceptions import (
     ParserBusy,
     UnsupportedMediaType,
 )
-from formlens.parsing.models import BYTES_PER_MB, OutputFormat, ParsedDocument, detect_document_type
+from formlens.parsing.models import BYTES_PER_MB, DocumentType, OutputFormat, ParsedDocument, detect_document_type
 from formlens.parsing.ports import DocumentParser, ParseResult
 from formlens.parsing.slots import ParseSlots
 
@@ -26,6 +26,26 @@ class DocumentService:
         self._slots = slots
         self._max_upload_mb = max_upload_mb
 
+    def validate(self, content: bytes) -> DocumentType:
+        """Refuse content that cannot be parsed, without parsing it, and return its type.
+
+        The checks run in the order of their cost. A caller that queues the work (the extraction
+        endpoint) uses this to answer 400, 413 and 415 at once instead of failing later.
+
+        Raises:
+            InvalidFile: The content is empty.
+            FileTooLarge: The content is larger than the limit.
+            UnsupportedMediaType: The content is not a PDF, PNG, JPEG or TIFF.
+        """
+        if not content:
+            raise InvalidFile("The file is empty.")
+        if len(content) > self._max_upload_mb * BYTES_PER_MB:
+            raise FileTooLarge(self._max_upload_mb)
+        kind = detect_document_type(content)
+        if kind is None:
+            raise UnsupportedMediaType
+        return kind
+
     def parse(self, content: bytes, output_format: OutputFormat) -> ParsedDocument:
         """Return the text of `content` in `output_format`.
 
@@ -36,13 +56,7 @@ class DocumentService:
             ParserBusy: Every slot is taken.
             ParseFailed: The parser failed.
         """
-        if not content:
-            raise InvalidFile("The file is empty.")
-        if len(content) > self._max_upload_mb * BYTES_PER_MB:
-            raise FileTooLarge(self._max_upload_mb)
-        kind = detect_document_type(content)
-        if kind is None:
-            raise UnsupportedMediaType
+        kind = self.validate(content)
         try:
             with self._slots.hold():
                 result = self._parse(content, kind.extension)

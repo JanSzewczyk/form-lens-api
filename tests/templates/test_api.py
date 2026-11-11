@@ -15,7 +15,17 @@ from formlens.main import create_app
 from formlens.patterns import matches
 from formlens.problems import PROBLEM_MEDIA_TYPE
 from formlens.templates.json_schema import build_json_schema
-from formlens.templates.models import FieldType, TemplateField
+from formlens.templates.models import (
+    MAX_ALLOWED_VALUE_LENGTH,
+    MAX_ALLOWED_VALUES,
+    MAX_DESCRIPTION_LENGTH,
+    MAX_FIELD_NAME_LENGTH,
+    MAX_FIELDS,
+    MAX_PATTERN_LENGTH,
+    MAX_TEMPLATE_NAME_LENGTH,
+    FieldType,
+    TemplateField,
+)
 from tests.conftest import make_settings
 from tests.fakes import FakeParser
 from tests.templates.factories import field_body, template_body
@@ -580,3 +590,87 @@ def test_a_get_or_a_delete_has_no_body_cap_and_a_413_is_documented_on_both_write
     assert "413" in spec["paths"]["/v1/templates/{template_id}"]["put"]["responses"]
     assert "413" not in spec["paths"]["/v1/templates/{template_id}"]["get"]["responses"]
     assert "413" not in spec["paths"]["/v1/templates/{template_id}"]["delete"]["responses"]
+
+
+# --- the body cap against the limits of the spec ---------------------------------------------------
+
+
+def _padded(letter: str, index: int, length: int) -> str:
+    """A text of exactly `length` characters that is different for each `index`."""
+    return (f"{index:02d}" + letter * length)[:length]
+
+
+def _name(index: int) -> str:
+    return ("f" + f"{index:02d}" + "x" * MAX_FIELD_NAME_LENGTH)[:MAX_FIELD_NAME_LENGTH]
+
+
+def at_every_limit(letter: str, *, kind: str) -> dict[str, Any]:
+    """A template that uses every limit of the spec at once, written with `letter` in every text that may hold it.
+
+    `choice`: the most fields, each with the most values of the longest length and the longest description.
+    `pattern`: the same fields as text, each with the longest pattern. A field name is ASCII by rule.
+    """
+    fields: list[dict[str, Any]] = []
+    for index in range(MAX_FIELDS):
+        common = {"name": _name(index), "description": letter * MAX_DESCRIPTION_LENGTH, "required": True}
+        if kind == "choice":
+            values = [_padded(letter, value, MAX_ALLOWED_VALUE_LENGTH) for value in range(MAX_ALLOWED_VALUES)]
+            fields.append({**common, "type": "choice", "allowed_values": values})
+        else:
+            fields.append({**common, "type": "text", "pattern": letter * MAX_PATTERN_LENGTH})
+    return {"name": letter * MAX_TEMPLATE_NAME_LENGTH, "description": letter * MAX_DESCRIPTION_LENGTH, "fields": fields}
+
+
+VARIANTS = [("a", False), ("ą", False), ("ą", True)]
+VARIANT_IDS = ["ascii", "polish-utf8", "polish-escaped"]
+
+
+@pytest.mark.parametrize("kind", ["choice", "pattern"])
+@pytest.mark.parametrize(("letter", "ensure_ascii"), VARIANTS, ids=VARIANT_IDS)
+def test_a_template_at_every_limit_of_the_spec_is_accepted_by_post_and_put_at_the_default_body_cap(
+    client: TestClient, kind: str, letter: str, ensure_ascii: bool
+) -> None:
+    body = json.dumps(at_every_limit(letter, kind=kind), ensure_ascii=ensure_ascii).encode()
+    headers = {"Content-Type": "application/json"}
+
+    created = client.post(URL, content=body, headers=headers)
+    replaced = client.put(f"{URL}/{created.json().get('id')}", content=body, headers=headers)
+
+    assert created.status_code == 201, created.text[:300]
+    assert replaced.status_code == 200, replaced.text[:300]
+    assert replaced.json()["version"] == 2
+    assert len(created.json()["fields"]) == MAX_FIELDS
+    assert len(body) <= Settings(_env_file=None).max_json_body_kb * 1024
+
+
+def test_the_default_body_cap_leaves_room_above_the_largest_valid_template() -> None:
+    """The README states the figures; the cap must stay above the worst one with a margin for pretty-printing."""
+    worst = max(
+        len(json.dumps(at_every_limit(letter, kind="choice"), ensure_ascii=ensure_ascii).encode())
+        for letter, ensure_ascii in VARIANTS
+    )
+
+    assert worst == 1_585_093  # the figure in the README
+    assert Settings(_env_file=None).max_json_body_kb * 1024 > worst * 1.25
+
+
+@pytest.mark.parametrize("method", ["post", "put"])
+def test_a_body_one_byte_over_the_cap_is_a_413_and_a_body_at_the_cap_is_not(db_url: str, method: str) -> None:
+    cap_kb = 64
+    app = create_app(
+        make_settings(db_url=db_url, max_json_body_kb=cap_kb), parser_factory=lambda _: FakeParser(), start_worker=False
+    )
+    valid = json.dumps(template_body()).encode()
+    at_cap = valid + b" " * (cap_kb * 1024 - len(valid))  # JSON allows trailing white space
+    try:
+        with TestClient(app) as client:
+            created = create(client)
+            url = URL if method == "post" else f"{URL}/{created['id']}"
+            headers = {"Content-Type": "application/json"}
+            exact = client.request(method, url, content=at_cap, headers=headers)
+            over = client.request(method, url, content=at_cap + b" ", headers=headers)
+    finally:
+        app.state.database.dispose()
+
+    assert exact.status_code in {200, 201}
+    assert (over.status_code, over.json()["type"]) == (413, problem_type("body-too-large"))

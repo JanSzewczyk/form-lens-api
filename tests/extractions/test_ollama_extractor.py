@@ -353,3 +353,20 @@ def test_a_pathological_pattern_is_checked_in_linear_time() -> None:
 
     assert time.perf_counter() - started < 1.0
     assert ask(Server(chat(json.dumps({"id": "a" * 30}))), template) == {"id": "a" * 30}
+
+
+def test_a_schema_with_a_pattern_the_linear_engine_cannot_run_is_invalid_output_naming_the_pattern() -> None:
+    """A template made before a pattern rule changed must fail the job cleanly, not crash the worker."""
+    template = TemplateSnapshotFactory.build(
+        json_schema={
+            "type": "object",
+            "properties": {"id": {"type": ["string", "null"], "pattern": "(?=a)a"}},
+            "required": ["id"],
+            "additionalProperties": False,
+        }
+    )
+
+    with pytest.raises(InvalidOutput) as raised:
+        ask(Server(chat(json.dumps({"id": "a"}))), template)
+
+    assert raised.value.cause_type == "pattern"

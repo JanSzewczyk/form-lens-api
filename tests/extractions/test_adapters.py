@@ -127,3 +127,10 @@ def test_an_unloaded_model_is_a_failure_a_retry_may_cure() -> None:
         text_source(parser).extract_text(sample("sample.png"))
 
     assert caught.value.cause_type == "ModelUnavailable"
+
+
+def test_a_document_over_the_limit_that_reaches_the_worker_is_an_unreadable_file_not_a_crash() -> None:
+    source = text_source(FakeParser(RESULT), max_mb=1)
+
+    with pytest.raises(domain.FileUnreadable):
+        source.extract_text(png_of_size(1024 * 1024 + 1))

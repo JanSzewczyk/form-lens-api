@@ -6,6 +6,8 @@ from datetime import timedelta
 import pytest
 from structlog.testing import capture_logs
 
+from formlens.database import Database
+from formlens.extractions.adapters.sqlite_repository import SqliteExtractionRepository
 from formlens.extractions.domain.exceptions import (
     DocumentTooLong,
     FileUnreadable,
@@ -15,7 +17,7 @@ from formlens.extractions.domain.exceptions import (
     ParserBusy,
 )
 from formlens.extractions.domain.model import FAILURE_MESSAGES, ExtractionStatus, FailureReason
-from tests.extractions.fakes import FakeExtractor, FakeTextSource
+from tests.extractions.fakes import FakeExtractionRepository, FakeExtractor, FakeTextSource
 from tests.extractions.harness import Harness, wait_until
 
 VALUES = {"number": "INV-42", "buyer": None}
@@ -274,6 +276,7 @@ def test_an_error_nobody_translated_ends_the_job_without_its_text_in_the_extract
 def test_a_job_whose_upload_is_gone_ends_as_interrupted() -> None:
     harness = Harness()
     extraction = harness.submit()
+    assert isinstance(harness.repository, FakeExtractionRepository)
     del harness.repository.inputs[extraction.id]
 
     harness.processor.run_once()
@@ -372,3 +375,75 @@ def test_the_lifecycle_logs_claim_and_finish_with_the_reason_and_the_time_but_no
     )
     assert isinstance(finished["elapsed_ms"], int)
     assert "PRIVATE" not in str(logs)
+
+
+# --- a restart while an old attempt is still running, on a real SQLite file -------------------------
+
+
+def test_a_result_of_a_stopped_workers_attempt_cannot_end_the_attempt_that_took_over(database: Database) -> None:
+    """The service stops with a job running, starts again and runs the job a second time; the first attempt's
+    thread, left behind at the stop, finishes while the second is still running. Only the second may end the job."""
+    repository = SqliteExtractionRepository(database)
+    held_old, held_new = threading.Event(), threading.Event()
+    old = Harness(repository=repository, extractor=FakeExtractor({"number": "OLD"}, release=held_old))
+    new = Harness(repository=repository, extractor=FakeExtractor({"number": "NEW"}, release=held_new))
+    extraction = old.submit()
+    first = threading.Thread(target=old.processor.run_once, daemon=True)
+    second = threading.Thread(target=new.processor.run_once, daemon=True)
+    try:
+        first.start()
+        assert wait_until(old.extractor.started.is_set)  # attempt 1 is running; the service "stops" here
+        new.processor.recover()
+        assert repository.get(extraction.id).status is ExtractionStatus.PENDING  # type: ignore[union-attr]
+        second.start()
+        assert wait_until(new.extractor.started.is_set)  # attempt 2 is running
+        held_old.set()  # the old attempt ends first
+        first.join(5)
+        mid = repository.get(extraction.id)
+        held_new.set()
+        second.join(5)
+    finally:
+        held_old.set()
+        held_new.set()
+    done = repository.get(extraction.id)
+
+    assert mid is not None
+    assert (mid.status, mid.attempts, mid.result) == (ExtractionStatus.RUNNING, 2, None)
+    assert done is not None
+    assert (done.status, done.attempts, done.result) == (
+        ExtractionStatus.COMPLETED,
+        2,
+        {"number": "NEW", "buyer": None},
+    )
+
+
+def test_a_job_that_timed_out_stays_timed_out_through_a_restart_and_a_late_result_after_it(database: Database) -> None:
+    repository = SqliteExtractionRepository(database)
+    release = threading.Event()
+    before = Harness(
+        repository=repository, extractor=FakeExtractor({"number": "LATE"}, release=release), job_timeout_seconds=0.05
+    )
+    after = Harness(repository=repository, extractor=FakeExtractor({"number": "OK"}))
+    timed_out, next_job = before.submit(), before.submit()
+    try:
+        before.processor.run_once()
+        failed = repository.get(timed_out.id)
+        after.processor.recover()  # the service restarted; the first job is not running any more
+        recovered = repository.get(timed_out.id)
+        assert after.processor.run_once() is True
+        release.set()
+        assert wait_until(before.extractor.finished.is_set)
+        assert wait_until(lambda: not before.deadline.busy())
+    finally:
+        release.set()
+
+    assert failed is not None
+    assert (failed.status, failed.attempts) == (ExtractionStatus.FAILED, 1)
+    assert recovered == failed  # a restart does not give a timed-out job another attempt
+    final = repository.get(timed_out.id)
+    assert final == failed
+    assert final is not None
+    assert final.result is None
+    done = repository.get(next_job.id)
+    assert done is not None
+    assert (done.status, done.result) == (ExtractionStatus.COMPLETED, {"number": "OK", "buyer": None})

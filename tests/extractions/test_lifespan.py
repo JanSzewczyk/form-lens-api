@@ -1,5 +1,6 @@
 """Starting and stopping the app: the head check, recovery, the worker and the time it takes to stop."""
 
+import asyncio
 import json
 import threading
 import time
@@ -17,13 +18,14 @@ from formlens.config import Settings
 from formlens.database import Database
 from formlens.extractions.adapters.sqlite_repository import SqliteExtractionRepository
 from formlens.extractions.domain.model import ExtractionStatus
+from formlens.extractions.entrypoints.worker import ExtractionWorker
 from formlens.main import create_app
 from formlens.migrations import DatabaseNotAtHead
 from tests.conftest import make_settings
 from tests.documents import sample
 from tests.extractions.factories import ExtractionFactory
 from tests.extractions.fakes import FakeExtractor
-from tests.extractions.harness import wait_until
+from tests.extractions.harness import Harness, wait_until
 from tests.fakes import FakeParser
 
 PDF = sample("text_layer.pdf")
@@ -245,3 +247,53 @@ def test_a_job_that_is_still_running_does_not_hold_the_shutdown_past_its_budget(
         app.state.database.dispose()
 
     assert took < 3.0  # the budget is 3 s of which 2 s are the margin: the worker waits at most 1 s
+
+
+def test_an_app_built_with_the_default_extractor_starts_serves_health_and_stops(db_url: str) -> None:
+    app = create_app(make_settings(db_url=db_url), parser_factory=lambda _: FakeParser(), start_worker=False)
+    try:
+        with TestClient(app) as client:
+            assert client.get("/health").status_code == 200
+    finally:
+        app.state.database.dispose()
+
+
+class CountingRepository(SqliteExtractionRepository):
+    """The SQLite repository that counts how many times the purge ran."""
+
+    purges = 0
+
+    def purge_before(self, cutoff: datetime) -> int:
+        type(self).purges += 1
+        return super().purge_before(cutoff)
+
+
+def test_a_running_worker_purges_expired_extractions_on_its_own_schedule(database: Database) -> None:
+    """The purge runs about once a minute; here the interval is short, so a result that expires later is gone too."""
+    CountingRepository.purges = 0
+    repository = CountingRepository(database)
+    harness = Harness(repository=repository, ttl=timedelta(hours=1))
+    extraction = harness.submit()
+    claimed = repository.claim_next(harness.clock.now)
+    assert claimed is not None
+    repository.finish_if_running(claimed.complete({"number": "x", "buyer": None}, harness.clock.now))
+    worker = ExtractionWorker(harness.processor, poll_interval_seconds=0.01, purge_interval_seconds=0.01)
+
+    async def until(condition: Callable[[], bool]) -> bool:
+        for _ in range(500):
+            if condition():
+                return True
+            await asyncio.sleep(0.01)
+        return condition()
+
+    async def run() -> tuple[bool, bool]:
+        worker.start()
+        purged_at_start_and_once_more = await until(lambda: CountingRepository.purges >= 2)
+        harness.clock.advance(hours=2)  # the result is now past its time to live
+        gone = await until(lambda: repository.get(extraction.id) is None)
+        await worker.stop(5)
+        return purged_at_start_and_once_more, gone
+
+    ran_again, gone = asyncio.run(run())
+
+    assert (ran_again, gone) == (True, True)

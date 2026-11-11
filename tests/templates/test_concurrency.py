@@ -12,11 +12,14 @@ from tests.templates.factories import field_body, template_body
 
 THREADS = 8
 URL = "/v1/templates"
+# One round of a race can pass by luck: the guard test runs on fresh data in each of five rounds.
+ROUNDS = [pytest.param(number, id=f"round-{number}") for number in range(5)]
 
 
 @pytest.mark.concurrency
+@pytest.mark.parametrize("_round", ROUNDS)
 def test_parallel_replacements_get_the_versions_two_to_n_plus_one_and_the_row_holds_the_last(
-    app: FastAPI, client: TestClient
+    app: FastAPI, client: TestClient, _round: int
 ) -> None:
     created = client.post(URL, json=template_body(name="Before")).json()
     app.openapi()  # the first request builds the OpenAPI document; do not let eight threads do it together

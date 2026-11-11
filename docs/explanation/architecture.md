@@ -233,8 +233,10 @@ The numbering is the plan's.
 - **D12 Golden set.** In the repository, synthetic only, seeded; `make evaluate`; no number is claimed until it has
   run.
 - **D13 The upload waits in a table** (`extraction_inputs`, a BLOB), deleted when the job ends.
-- **D14 The model server must be local**: `LLM_BASE_URL` is a loopback or private address, a name without a dot or
-  `host.docker.internal`; the client ignores the proxy variables.
+- **D14 The model server must be local**: `LLM_BASE_URL` is a loopback or private address in its standard form, a name without a dot or
+  `host.docker.internal`; the client ignores the proxy variables. Shorthand spellings (`134744072`, `0x08080808`,
+  `127.1`, octal, which the resolver reads as other addresses), link-local (cloud metadata lives there) and
+  unspecified addresses are refused. A dotless name is trusted to resolve locally: nothing asks a resolver.
 - **D15 Missing required fields.** A `null` in a required field is still `completed`; `missing_required` says which.
 - **D16 Context.** The text is bounded by `LLM_MAX_INPUT_CHARS` (`document_too_long`); the output is validated with
   `jsonschema`, which is the contract; temperature 0 and a fixed seed. If Ollama's `/v1` endpoint ignores the context

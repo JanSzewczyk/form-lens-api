@@ -1,6 +1,8 @@
 """Application settings loaded from environment variables."""
 
 import ipaddress
+import re
+import socket
 from pathlib import Path
 from typing import Final, Literal, Self, cast
 from urllib.parse import urlsplit
@@ -19,19 +21,42 @@ type LogFormat = Literal["auto", "json", "console"]
 _DOCKER_HOST: Final = "host.docker.internal"
 
 
+_NAME: Final = re.compile(r"[a-z0-9_-]+")
+
+
+def _is_ipv4_shorthand(host: str) -> bool:
+    """Tell whether the C resolver would read `host` as an IPv4 address in a form `ipaddress` does not accept.
+
+    `inet_aton` takes `134744072` and `0x08080808` (both are 8.8.8.8), `127.1` and the octal `010.010.010.010`. A
+    client library hands the string to the resolver, which reads it that way, so such a host is refused instead
+    of being read as the name it looks like.
+    """
+    try:
+        socket.inet_aton(host)
+    except OSError:
+        return False
+    return True
+
+
 def is_local_host(host: str) -> bool:
     """Tell whether `host` is a machine of the operator's own: loopback, a private address or a plain name.
 
-    A document is sent to this host, so it must not be somebody else's server: a private or loopback
-    IP literal, a name without a dot (`localhost`, a compose service such as `ollama`) or
-    `host.docker.internal` is accepted; any other dotted name is refused.
+    A document is sent to this host, so it must not be somebody else's server. Accepted: an IP address in its
+    standard form (dotted IPv4 or IPv6) that is loopback or private, a name without a dot (`localhost`, a Compose
+    service such as `ollama`) and `host.docker.internal`. Refused: any other dotted name, every shorthand or
+    numeric spelling of an address, link-local (169.254.0.0/16, fe80::/10, where cloud metadata lives) and
+    unspecified addresses. A dotless name is **trusted to resolve locally**: nothing here asks a resolver.
     """
     if host == _DOCKER_HOST:
         return True
     try:
         address = ipaddress.ip_address(host)
     except ValueError:
-        return "." not in host
+        return not _is_ipv4_shorthand(host) and _NAME.fullmatch(host) is not None
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        address = address.ipv4_mapped  # ::ffff:8.8.8.8 is 8.8.8.8
+    if address.is_link_local or address.is_unspecified:
+        return False
     return address.is_loopback or address.is_private
 
 
@@ -55,7 +80,10 @@ def require_local_model_url(value: str) -> str:
         msg = "must not contain a user name or password"
         raise ValueError(msg)
     if not is_local_host(host):
-        msg = "must point to a loopback or private address, a name without a dot or host.docker.internal"
+        msg = (
+            "must point to a loopback or private address in its standard form, a name without a dot or "
+            "host.docker.internal"
+        )
         raise ValueError(msg)
     return value
 

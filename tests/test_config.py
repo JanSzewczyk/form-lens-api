@@ -507,3 +507,60 @@ def test_the_model_timeout_must_stay_below_the_job_timeout() -> None:
         make_settings(llm_timeout_seconds=600, job_timeout_seconds=600)
 
     assert make_settings(llm_timeout_seconds=599, job_timeout_seconds=600).llm_timeout_seconds == 599
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://134744072:11434/v1",
+        "http://0x08080808/v1",
+        "http://010.010.010.010/v1",
+        "http://0x7f.1/v1",
+        "http://127.1/v1",
+        "http://2130706433/v1",
+        "http://169.254.169.254/latest/meta-data",
+        "http://[fe80::1]/v1",
+        "http://0.0.0.0:11434/v1",
+        "http://[::]:11434/v1",
+        "http://[::ffff:8.8.8.8]/v1",
+        "http://[::ffff:169.254.169.254]/v1",
+        "http://8.8.8.8./v1",
+        "http://my_host!/v1",
+    ],
+    ids=[
+        "decimal",
+        "hex",
+        "octal",
+        "hex-short",
+        "short-dotted-loopback",
+        "decimal-loopback",
+        "link-local-metadata",
+        "link-local-v6",
+        "unspecified",
+        "unspecified-v6",
+        "mapped-public",
+        "mapped-link-local",
+        "trailing-dot",
+        "odd-name",
+    ],
+)
+def test_an_address_written_in_a_shorthand_or_that_is_link_local_is_refused(url: str) -> None:
+    with pytest.raises(ValidationError, match="llm_base_url"):
+        make_settings(llm_base_url=url)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://[::ffff:10.0.0.1]/v1",
+        "http://[::ffff:127.0.0.1]/v1",
+        "http://[fd12:3456::1]/v1",
+        "http://localhost/v1",
+        "http://ollama-gpu_1:11434/v1",
+        "http://host.docker.internal/v1",
+        "http://192.168.0.7/v1",
+    ],
+    ids=["mapped-private", "mapped-loopback", "unique-local-v6", "localhost", "service-name", "docker-host", "private"],
+)
+def test_a_private_address_in_its_standard_form_and_a_plain_name_are_still_accepted(url: str) -> None:
+    assert make_settings(llm_base_url=url).llm_base_url == url

@@ -34,8 +34,9 @@ _Service = Annotated[TemplateService, Depends(get_template_service)]
             VALIDATION_ERROR,
             INVALID_TEMPLATE,
             description=(
-                "The body is not valid (`validation-error`), or the template breaks a rule: duplicate or unsafe "
-                "field names, a choice without values, a range on a non-number, a bad pattern, too many fields "
+                "The body is not valid, for instance too many fields or a name that is too long "
+                "(`validation-error`), or the template breaks a rule the schema cannot state: duplicate field "
+                "names, a choice without values, a range on a non-number, a pattern that does not compile "
                 "(`invalid-template`)."
             ),
         ),

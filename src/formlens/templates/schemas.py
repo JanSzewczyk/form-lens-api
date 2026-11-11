@@ -1,22 +1,48 @@
 """Request and response models of the templates API."""
 
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from formlens.pagination import Page
 from formlens.templates.json_schema import build_json_schema
-from formlens.templates.models import FieldType, Template, TemplateDraft, TemplateField
+from formlens.templates.models import (
+    FIELD_NAME_PATTERN,
+    MAX_ALLOWED_VALUE_LENGTH,
+    MAX_ALLOWED_VALUES,
+    MAX_DESCRIPTION_LENGTH,
+    MAX_FIELD_NAME_LENGTH,
+    MAX_FIELDS,
+    MAX_PATTERN_LENGTH,
+    MAX_TEMPLATE_NAME_LENGTH,
+    FieldType,
+    Template,
+    TemplateDraft,
+    TemplateField,
+)
+
+# The size limits are stated in the spec as well as checked by the domain, so a client can read them. The rules
+# a schema cannot state (a choice needs values, a range only fits a number, names are unique, a pattern
+# compiles) are answered by the domain as `invalid-template`.
 
 
 class FieldSpec(BaseModel):
     """One field of a form, as a client sends it and as it is returned."""
 
-    model_config = ConfigDict(extra="forbid")
+    # The example is on the model, not on `allowed_values`, `minimum`, `maximum` and `pattern`: those only
+    # fit some types, and a generator that combines per-property examples builds a text field with choices.
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [{"name": "invoice_number", "type": "text", "description": "Top right", "required": True}]
+        },
+    )
 
     name: str = Field(
+        pattern=FIELD_NAME_PATTERN,
+        max_length=MAX_FIELD_NAME_LENGTH,
         description="The key of the field in the extraction result: lower case letters, digits and `_`, "
         "starting with a letter. Unique within the template.",
         examples=["invoice_number"],
@@ -24,6 +50,7 @@ class FieldSpec(BaseModel):
     type: FieldType = Field(description="What the field holds.", examples=["text"])
     description: str = Field(
         default="",
+        max_length=MAX_DESCRIPTION_LENGTH,
         description="How the field appears on the form (its label, where it sits). It helps the extraction.",
         examples=["Invoice number, top right"],
     )
@@ -32,27 +59,28 @@ class FieldSpec(BaseModel):
         description="Whether a completed form must have a value. A result with a missing required field is "
         "still delivered and lists the field under `missing_required`.",
     )
-    allowed_values: list[str] | None = Field(
+    allowed_values: (
+        list[Annotated[str, StringConstraints(min_length=1, max_length=MAX_ALLOWED_VALUE_LENGTH)]] | None
+    ) = Field(
         default=None,
+        max_length=MAX_ALLOWED_VALUES,
         description="The values a `choice` field may take; required for `choice`, refused for other types.",
-        examples=[["paid", "unpaid"]],
     )
     minimum: float | None = Field(
         default=None,
         allow_inf_nan=False,
         description="Smallest value of a `number` or `integer` field.",
-        examples=[0],
     )
     maximum: float | None = Field(
         default=None,
         allow_inf_nan=False,
         description="Largest value of a `number` or `integer` field.",
-        examples=[10000],
     )
     pattern: str | None = Field(
         default=None,
+        min_length=1,
+        max_length=MAX_PATTERN_LENGTH,
         description="Regular expression a `text` value must match (at most 200 characters).",
-        examples=["^[0-9]{11}$"],
     )
 
     def to_domain(self) -> TemplateField:
@@ -88,11 +116,21 @@ class TemplateWrite(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(description="Name of the form, for people.", examples=["Invoice"])
+    name: str = Field(
+        min_length=1,
+        max_length=MAX_TEMPLATE_NAME_LENGTH,
+        description="Name of the form, for people.",
+        examples=["Invoice"],
+    )
     description: str = Field(
-        default="", description="What the form is.", examples=["A supplier invoice with a total and a due date."]
+        default="",
+        max_length=MAX_DESCRIPTION_LENGTH,
+        description="What the form is.",
+        examples=["A supplier invoice with a total and a due date."],
     )
     fields: list[FieldSpec] = Field(
+        min_length=1,
+        max_length=MAX_FIELDS,
         description="The fields to extract, 1 to 50, with unique names.",
     )
 

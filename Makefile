@@ -9,6 +9,7 @@ SPECTRAL := npx --yes @stoplight/spectral-cli@6.17.1
 PIP_AUDIT := uvx pip-audit@2.10.1
 OASDIFF_IMAGE := tufin/oasdiff:v1.35.0
 BASE_SPEC := .openapi-base.json
+OASDIFF_IGNORE := oasdiff-ignore.txt
 
 install:
 	uv sync --locked
@@ -57,16 +58,19 @@ api-lint:
 	$(SPECTRAL) lint openapi.json --fail-severity=warn
 
 # Compare with the spec on origin/main; breaking changes (errors) fail. Needs oasdiff or Docker.
+# Changes listed in $(OASDIFF_IGNORE) are accepted: the example routes the template shipped were
+# removed on purpose. Delete the file once this branch is merged into main.
 api-breaking:
 	@if ! git cat-file -e origin/main:openapi.json 2>/dev/null; then \
 		echo "origin/main has no openapi.json yet; skipping the breaking-change check."; exit 0; \
 	fi; \
 	git show origin/main:openapi.json > $(BASE_SPEC); \
 	if command -v oasdiff >/dev/null 2>&1; then \
-		oasdiff breaking $(BASE_SPEC) openapi.json --fail-on ERR; \
+		oasdiff breaking $(BASE_SPEC) openapi.json --fail-on ERR --err-ignore $(OASDIFF_IGNORE); \
 	else \
 		docker run --rm -v "$(CURDIR):/spec:ro" $(OASDIFF_IMAGE) \
-			breaking /spec/$(BASE_SPEC) /spec/openapi.json --fail-on ERR; \
+			breaking /spec/$(BASE_SPEC) /spec/openapi.json --fail-on ERR \
+			--err-ignore /spec/$(OASDIFF_IGNORE); \
 	fi
 
 # Starts the service, runs Schemathesis with every check and phase, stops the service.

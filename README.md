@@ -226,7 +226,7 @@ curl http://127.0.0.1:8000/health
 | `make openapi` | Regenerate `openapi.json` from the app (never edit it by hand) |
 | `make openapi-check` | Fail if `openapi.json` is out of date |
 | `make api-lint` | Spectral on `openapi.json`, failing on warnings (needs Node; runs `npx`) |
-| `make api-breaking` | oasdiff against `origin/main:openapi.json`, failing on breaking changes (needs oasdiff or Docker) |
+| `make api-breaking` | oasdiff against `origin/main:openapi.json`, failing on breaking changes except those listed in `oasdiff-ignore.txt` (the removed example routes; delete the file after the first merge to `main`); needs oasdiff or Docker |
 | `make schemathesis` | Start the service, run Schemathesis with every check and phase, stop it |
 | `make api-check` | `openapi-check`, `api-lint`, `api-breaking` and `schemathesis` |
 | `make audit` | pip-audit on every locked dependency group |

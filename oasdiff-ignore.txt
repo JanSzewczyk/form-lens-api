@@ -1,0 +1,8 @@
+GET /v1/books api path removed without deprecation
+POST /v1/books api path removed without deprecation
+GET /v1/books/{book_id} api path removed without deprecation
+PUT /v1/books/{book_id} api path removed without deprecation
+GET /v1/loans api path removed without deprecation
+POST /v1/loans api path removed without deprecation
+GET /v1/loans/{loan_id} api path removed without deprecation
+POST /v1/loans/{loan_id}/return api path removed without deprecation

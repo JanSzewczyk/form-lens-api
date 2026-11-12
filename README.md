@@ -700,10 +700,14 @@ GitHub Actions and the Docker images, grouping minor and patch releases.
 `.github/workflows/release.yml` runs python-semantic-release on every push to `main`. It reads the
 Conventional Commits since the last tag: `feat` bumps the minor version, `fix` and `perf` the patch
 version, and `!` or a `BREAKING CHANGE:` footer the major version (while the version is `0.x`, a
-breaking change bumps the minor). Other types release nothing. A release updates `version` in
-`pyproject.toml` and `uv.lock`, pushes a `chore(release): X.Y.Z` commit and the `vX.Y.Z` tag, adds the
-release to `CHANGELOG.md` and creates the GitHub Release with generated notes. Preview the next
-version locally with `uv run --group release semantic-release --noop version --print`.
+breaking change bumps the minor). Other types release nothing. `main` only takes pull requests, so a
+release has two steps: the workflow opens (and keeps updating) a `chore(release): X.Y.Z` pull request on
+`release/next` that updates `version` in `pyproject.toml`, `uv.lock` and `CHANGELOG.md`; merging it with
+squash or rebase (not a merge commit) makes the next run tag that commit `vX.Y.Z` and create the GitHub
+Release with generated notes. The repository needs *Allow GitHub Actions to create and approve pull
+requests* turned on, and the first tag (the current `version`) must exist before the first release
+pull request. Preview the next version locally with
+`uv run --group release semantic-release --noop version --print`.
 
 
 If `main` is protected, the workflow's token must be allowed to push to it (a ruleset bypass).

@@ -1,3 +1,7 @@
+> **This repository has moved.** The FormLens API now lives in the monorepo
+> [JanSzewczyk/form-lens](https://github.com/JanSzewczyk/form-lens), in `apps/api`, together with the FormLens Studio
+> web app. The full history was carried over. This repository is archived and no longer updated.
+
 <div align="center">
 
 # 🐍 formlens

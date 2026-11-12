@@ -7,6 +7,7 @@ __pycache__/
 .hypothesis/
 .coverage
 .idea/
+.import_linter_cache
 .coverage.*
 htmlcov/
 .env.*
@@ -22,3 +23,4 @@ models/
 *.db-shm
 # Parsed texts and the report of `make evaluate`
 .golden/
+graphify-out/

@@ -684,7 +684,8 @@ default). Behind a proxy, also set uvicorn's `FORWARDED_ALLOW_IPS`.
 
 `.github/workflows/ci.yml` runs on pushes to `main`, on pull requests, weekly and on demand:
 
-- `check` — `make check`, a coverage summary and the dependency audit; the only job of the weekly run
+- `check` — `make check` and a coverage summary
+- `audit` — the dependency audit (`make audit`), apart from `check` so a new advisory does not hide the code checks; with `check`, the weekly run
 - `api` — Spectral, oasdiff against `main` and Schemathesis (`make api-check`). Schemathesis fuzzes `tests/schemathesis_app.py`, the real app with a fake parser, started with `uvicorn --factory`, so no model is loaded (it never reaches a 200 under the 415 allowance; `tests/parsing/test_contract.py` checks the 200, 413, 500 and 503 answers against `openapi.json`)
 - `docker` — builds the image, runs it with an empty models folder and expects the documented start-up failure (a non-zero exit and `model_load_failed` in the output), then runs `python -c "import docling.document_converter, torch"` in the image to prove it can import them (without `--read-only`, `--tmpfs` or the models mount, so it does not show a failure that only the read-only container causes), then checks that `compose.yaml` is valid
 - `free-threaded` — the tests on free-threaded Python; informational, **switched off** (`if: false`) because the locked dependencies have no free-threaded wheels (`av`, `docling-parse`, pyarrow)

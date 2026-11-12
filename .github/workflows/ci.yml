@@ -24,6 +24,7 @@ env:
 
 jobs:
   check:
+    name: Check ✅
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -41,11 +42,29 @@ jobs:
         run: make check
       - name: Coverage summary 📊
         run: uv run coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
+
+  # Apart from the checks: a new advisory fails this job, not the code checks, and both results show.
+  audit:
+    name: Audit 🔒
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code 📚
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up uv 🐍
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Install dependencies ⚙️
+        run: uv sync --locked
       - name: Audit dependencies 🔒
         run: make audit
 
   # Contract tooling: Spectral on the spec, oasdiff against main, Schemathesis against a live server.
   api:
+    name: API contract 📜
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -65,6 +84,7 @@ jobs:
         run: make api-check
 
   docker:
+    name: Docker 🐳
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 15
